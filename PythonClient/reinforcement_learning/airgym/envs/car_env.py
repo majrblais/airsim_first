@@ -27,10 +27,10 @@ class AirSimCarEnv(AirSimEnv):
         self.car = airsim.CarClient(ip=ip_address)
         self.action_space = spaces.Discrete(6)
 
-        self.image_request = airsim.ImageRequest(
-            "0", airsim.ImageType.DepthPerspective, True, False
-        )
-
+        self.image_request = airsim.ImageRequest("0", airsim.ImageType.Segmentation, False, False)
+        success = self.car.simSetSegmentationObjectID("OrangeBall", 54);
+        print(success)
+        
         self.car_controls = airsim.CarControls()
         self.car_state = None
 
@@ -64,21 +64,30 @@ class AirSimCarEnv(AirSimEnv):
         self.car.setCarControls(self.car_controls)
         time.sleep(1)
 
-    def transform_obs(self, response):
-        img1d = np.array(response.image_data_float, dtype=np.float)
-        img1d = 255 / np.maximum(np.ones(img1d.size), img1d)
-        img2d = np.reshape(img1d, (response.height, response.width))
+    def transform_obs(self, responses):
+        print(self.car.simGetSegmentationObjectID("OrangeBall"))
+        response = responses[0]
+        img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
+        unique, counts = np.unique(img1d, return_counts=True)
+        print(np.asarray((unique, counts)).T)
+        img_rgb = img1d.reshape(response.height, response.width, 3)
+        img_rgb = np.flipud(img_rgb)
+        
+        
+        #img1d = np.array(response.image_data_float, dtype=np.float)
+        #img1d = 255 / np.maximum(np.ones(img1d.size), img1d)
+        #img2d = np.reshape(img1d, (response.height, response.width))
 
         from PIL import Image
 
-        image = Image.fromarray(img2d)
-        im_final = np.array(image.resize((84, 84)).convert("L"))
+        #image = Image.fromarray(img2d)
+        #im_final = np.array(image.resize((84, 84)).convert("L"))
 
         return im_final.reshape([84, 84, 1])
 
     def _get_obs(self):
         responses = self.car.simGetImages([self.image_request])
-        image = self.transform_obs(responses[0])
+        image = self.transform_obs(responses)
 
         self.car_state = self.car.getCarState()
 

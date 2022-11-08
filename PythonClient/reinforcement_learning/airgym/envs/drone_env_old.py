@@ -20,22 +20,15 @@ class AirSimDroneEnv(AirSimEnv):
             "position": np.zeros(3),
             "collision": False,
             "prev_position": np.zeros(3),
-            "val_seg": 0.0,
         }
 
         self.drone = airsim.MultirotorClient(ip=ip_address)
         self.action_space = spaces.Discrete(7)
         self._setup_flight()
 
-        self.image_request = airsim.ImageRequest(0, airsim.ImageType.Segmentation, False, False)
-        #success = self.drone.simSetSegmentationObjectID("ob", 54);
-        #print(success)
-        print(self.drone.simGetSegmentationObjectID("ob"))
-        print(self.drone.simGetSegmentationObjectID("g4"))
-        print(self.drone.simGetSegmentationObjectID("g6"))
-        #success = self.drone.simSetSegmentationObjectID("Ground_6", 23)
-   
-        
+        self.image_request = airsim.ImageRequest(
+            3, airsim.ImageType.DepthPerspective, True, False
+        )
 
     def __del__(self):
         self.drone.reset()
@@ -46,39 +39,24 @@ class AirSimDroneEnv(AirSimEnv):
         self.drone.armDisarm(True)
 
         # Set home position and velocity
-        self.drone.moveToPositionAsync(0.0, 0.0, -19.0225, 10).join()
+        self.drone.moveToPositionAsync(-0.55265, -31.9786, -19.0225, 10).join()
         self.drone.moveByVelocityAsync(1, -0.67, -0.8, 5).join()
 
     def transform_obs(self, responses):
-
-        #the images are returned in segmentation map, seg_rgbs.txt defines the colors for each ID
-        response = responses[0]
-        img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
-
-        img_rgb = img1d.reshape(response.height, response.width, 3)
-        img_rgb = np.flipud(img_rgb)
-        unique, counts = np.unique(np.concatenate(img_rgb), axis=0, return_counts=True)
-
-        idx=np.where(unique == [120, 0, 200])
-        tot=sum(counts)
+        img1d = np.array(responses[0].image_data_float, dtype=np.float)
+        img1d = 255 / np.maximum(np.ones(img1d.size), img1d)
+        img2d = np.reshape(img1d, (responses[0].height, responses[0].width))
 
         from PIL import Image
 
-        image = Image.fromarray(img_rgb)
+        image = Image.fromarray(img2d)
         im_final = np.array(image.resize((84, 84)).convert("L"))
 
-        return im_final.reshape([84, 84, 1]),counts[idx[0]], tot
+        return im_final.reshape([84, 84, 1])
 
     def _get_obs(self):
-    
         responses = self.drone.simGetImages([self.image_request])
-        image,cnt,tot = self.transform_obs(responses)
-        print(cnt,tot)
-        try:
-            val=cnt[0]/tot
-        except:
-            val=0
-        
+        image = self.transform_obs(responses)
         self.drone_state = self.drone.getMultirotorState()
 
         self.state["prev_position"] = self.state["position"]
@@ -87,7 +65,6 @@ class AirSimDroneEnv(AirSimEnv):
 
         collision = self.drone.simGetCollisionInfo().has_collided
         self.state["collision"] = collision
-        self.state["val_seg"] = val
 
         return image
 
@@ -102,39 +79,56 @@ class AirSimDroneEnv(AirSimEnv):
         ).join()
 
     def _compute_reward(self):
-        thresh_dist = 25
+        thresh_dist = 7
         beta = 1
 
         z = -10
-        #pts = [np.array([-0.55265, -31.9786, -19.0225]),np.array([48.59735, -63.3286, -60.07256]),np.array([193.5974, -55.0786, -46.32256]),np.array([369.2474, 35.32137, -62.5725]),np.array([541.3474, 143.6714, -32.07256]),]
-        pts = [np.array([193.5974, -55.0786, -46.32256]),]
-        quad_pt = np.array(list((self.state["position"].x_val,self.state["position"].y_val,self.state["position"].z_val,)))
+        pts = [
+            np.array([-0.55265, -31.9786, -19.0225]),
+            np.array([48.59735, -63.3286, -60.07256]),
+            np.array([193.5974, -55.0786, -46.32256]),
+            np.array([369.2474, 35.32137, -62.5725]),
+            np.array([541.3474, 143.6714, -32.07256]),
+        ]
+
+        quad_pt = np.array(
+            list(
+                (
+                    self.state["position"].x_val,
+                    self.state["position"].y_val,
+                    self.state["position"].z_val,
+                )
+            )
+        )
         
         if self.state["collision"]:
             reward = -100
         else:
             dist = 10000000
-            for i in range(0, len(pts)):
-                dist = np.linalg.norm(pts[0][0:1]-quad_pt[0:1])
-                
-            print(dist)   
+            for i in range(0, len(pts) - 1):
+                dist = min(
+                    dist,
+                    np.linalg.norm(np.cross((quad_pt - pts[i]), (quad_pt - pts[i + 1])))
+                    / np.linalg.norm(pts[i] - pts[i + 1]),
+                )
+
             if dist > thresh_dist:
                 reward = -10
             else:
-                #print(self.state["val_seg"])
-                #reward = self.state["val_seg"]
                 reward_dist = math.exp(-beta * dist) - 0.5
-                reward_speed = (np.linalg.norm([self.state["velocity"].x_val, self.state["velocity"].y_val,self.state["velocity"].z_val,])-0.5)
+                reward_speed = (
+                    np.linalg.norm(
+                        [
+                            self.state["velocity"].x_val,
+                            self.state["velocity"].y_val,
+                            self.state["velocity"].z_val,
+                        ]
+                    )
+                    - 0.5
+                )
                 reward = reward_dist + reward_speed
-                #print(reward_dist)
-                #reward = reward_dist #+ reward_speed
-                #+ self.state["val_seg"]
-                #print(reward)
-                #reward = reward_dist * self.state["val_seg"]
-                #print(reward)
 
         done = 0
-        print(reward)
         if reward <= -10:
             done = 1
 

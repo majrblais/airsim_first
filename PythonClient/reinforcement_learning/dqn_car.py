@@ -29,7 +29,7 @@ env = VecTransposeImage(env)
 model = DQN(
     "CnnPolicy",
     env,
-    learning_rate=0.00025,
+    learning_rate=0.0015,
     verbose=1,
     batch_size=32,
     train_freq=4,
