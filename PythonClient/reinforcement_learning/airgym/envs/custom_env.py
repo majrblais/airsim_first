@@ -8,10 +8,10 @@ from gym import spaces
 import time
 #print(client.getMultirotorState())
 
+from airgym.envs.airsim_env import AirSimEnv
 
 
-
-class AirSimDroneEnv():
+class AirSimcustomEnv(AirSimEnv):
     def __init__(self, step_length=10, image_shape=(84, 84, 1)):
         self.step_length = step_length
         self.image_shape = image_shape
@@ -128,14 +128,14 @@ class AirSimDroneEnv():
         return quad_offset
 
 
-F=AirSimDroneEnv()
-print(F.drone.getMultirotorState().kinematics_estimated.position)
-print("forward")
-F._do_action(0)
-time.sleep(2.5)
-print(F.drone.getMultirotorState().kinematics_estimated.position)
-F._get_obs()
-print(F._compute_reward())
+#F=AirSimDroneEnv()
+#print(F.drone.getMultirotorState().kinematics_estimated.position)
+#print("forward")
+#F._do_action(0)
+#time.sleep(2.5)
+#print(F.drone.getMultirotorState().kinematics_estimated.position)
+#F._get_obs()
+#print(F._compute_reward())
 
 #print("right")
 #F._do_action(1)
