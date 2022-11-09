@@ -25,10 +25,10 @@ class AirSimcustomEnv(gym.Env):
         
         self.action_space = spaces.Discrete(5)
         #self.action_space = spaces.Discrete(7)
-        success = self.drone.simSetSegmentationObjectID("oil", 54);
-        print(success)
-        self.image_request = airsim.ImageRequest(0, airsim.ImageType.Segmentation, False, False)
-        
+        #success = self.drone.simSetSegmentationObjectID("oil", 54);
+        #print(success)
+        #self.image_request = airsim.ImageRequest(0, airsim.ImageType.Segmentation, False, False)
+        self.image_request = airsim.ImageRequest(0, airsim.ImageType.Scene, False, False)
         self.counter=0
         
         
@@ -49,12 +49,12 @@ class AirSimcustomEnv(gym.Env):
         self.drone.armDisarm(True)
 
         # Set home position and velocity
-        self.drone.moveToPositionAsync(0, 0, -50, 5).join()
-        #self.drone.moveByVelocityAsync(1,1, 1, 5).join()
+        self.drone.moveToPositionAsync(0, 0, -20, 5).join()
+        self.drone.moveByVelocityAsync(1, -0.67, -0.8, 5).join()
         
         
     def step(self, action):
-        print(action)
+        #print(action)
         self._do_action(action)
         obs = self._get_obs()
         reward, done = self._compute_reward()
@@ -67,23 +67,37 @@ class AirSimcustomEnv(gym.Env):
         z = -10
         
         #desired location
-        pts = [np.array([100, 100, -50.0]),]
+        pts = [np.array([60, 120, -20.0]),]
         quad_pt = np.array(list((self.state["position"].x_val,self.state["position"].y_val,self.state["position"].z_val,)))
         
-        print("test")
+        #print("test")
         if self.state["collision"]:
-            reward = -100
+            reward = -500
         else:
             dist = 10000000
-            for i in range(0, len(pts)):
-                dist = np.linalg.norm(pts[0][0:1]-quad_pt[0:1])
-                
-            reward = -dist
+            #for i in range(0, len(pts)):
+            print(pts[0][0:2])
+            print(quad_pt[0:2])
+            dist = np.linalg.norm(pts[0][0:2]-quad_pt[0:2])
+            print(self.drone_state.kinematics_estimated.position)
+            print(dist)            
+            #if dist >= 100:
+            #    reward = -10
+            #else:
+            
+            reward = -dist / 10
+                #reward_speed = (np.linalg.norm([self.state["velocity"].x_val, self.state["velocity"].y_val,self.state["velocity"].z_val,])-0.5)
+                #reward = reward_dist + reward_speed
+            
+        print(reward)            
 
         self.counter+=1
         done = 0
-        print(reward)
-        if self.counter >= 10:
+        
+        #if reward <=-10:
+        #    done=1
+        #print(reward)
+        if self.counter >= 10 and reward <=-10:
             done = 1
             self.counter=0
 
@@ -106,20 +120,22 @@ class AirSimcustomEnv(gym.Env):
 
         self.state["prev_position"] = self.state["position"]
         self.state["position"] = self.drone_state.kinematics_estimated.position
-
+        self.state["velocity"] = self.drone_state.kinematics_estimated.linear_velocity
+        
         collision = self.drone.simGetCollisionInfo().has_collided
         self.state["collision"] = collision
 
         return im_final.reshape([84, 84, 1])
     
     def _do_action(self, action):
+        print(action)
         offset = self.interpret_action(action)
         #pos=self.drone.getMultirotorState().kinematics_estimated.position
-        #self.drone.moveToPositionAsync(pos.x_val + offset[0],pos.y_val + offset[1],pos.z_val + offset[2], 5).join()
+        #self.drone.moveToPositionAsync(pos.x_val + offset[0],pos.y_val + offset[1],pos.z_val, 5).join()
         
         #Move by velocity
         pos=self.drone.getMultirotorState().kinematics_estimated.linear_velocity
-        self.drone.moveByVelocityAsync(pos.x_val + offset[0],pos.y_val + offset[1],pos.z_val + offset[2], 5).join()
+        self.drone.moveByVelocityAsync(pos.x_val + offset[0],pos.y_val + offset[1],0, 5).join()
         
 
         

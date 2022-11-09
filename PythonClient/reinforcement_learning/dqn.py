@@ -16,24 +16,6 @@ env = custom_env.AirSimcustomEnv(ip_address="127.0.0.1",step_length=2, image_sha
 env = DummyVecEnv([lambda: env])
 env = VecTransposeImage(env)
 
-model = DQN(
-    "CnnPolicy",
-    env,
-    learning_rate=0.00025,
-    verbose=1,
-    batch_size=32,
-    train_freq=4,
-    target_update_interval=10000,
-    learning_starts=0,
-    buffer_size=5000,
-    max_grad_norm=10,
-    exploration_fraction=0.1,
-    exploration_final_eps=0.01,
-    device="cuda",
-    tensorboard_log="./tb_logs/",
-)
+model = DQN("CnnPolicy",env,learning_starts=0,verbose=1,device="cuda",)
 
-
-model.learn(
-    total_timesteps=5e5
-)
+model.learn(total_timesteps=5e5)
