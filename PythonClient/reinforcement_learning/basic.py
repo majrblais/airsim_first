@@ -34,3 +34,5 @@ val=counts[idx[0]]/tot
 print(counts)
 print(tot)
 print(val)
+
+#client.getMultirotorState()
