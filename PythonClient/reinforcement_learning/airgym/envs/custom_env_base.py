@@ -13,7 +13,7 @@ import gym
 
 val=0
 
-class AirSimcustomEnv(gym.Env):
+class AirSimcustomEnv_sum(gym.Env):
     def __init__(self,ip_address="127.0.0.1", step_length=1, image_shape=(84, 84, 1),):
         self.step_length = step_length
         self.image_shape = image_shape
@@ -52,7 +52,7 @@ class AirSimcustomEnv(gym.Env):
         self.drone.enableApiControl(True)
         self.drone.armDisarm(True)
 
-        self.drone.moveToPositionAsync(0, 0, -150, 5).join()
+        self.drone.moveToPositionAsync(0, 0, -30, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 5).join()
         
         #set the base distance, take the desired point, current state (0,0,-20) and calculate the euclidean distance between them, save the best distance
@@ -73,14 +73,14 @@ class AirSimcustomEnv(gym.Env):
         
     def _compute_reward(self):
         #desired location & current location
-        pts = [np.array([-300, -1100, -150.0]),]
+        pts = [np.array([120, -120, -30.0]),]
         quad_pt = np.array(list((self.state["position"].x_val,self.state["position"].y_val,self.state["position"].z_val,)))
         
         #If collision or out of bounds
         if self.state["collision"]:
             reward = -500
             print("collision")
-        elif self.state["position"].x_val>= 700 or self.state["position"].x_val <=-700 or self.state["position"].y_val>= 10 or self.state["position"].y_val <=-2000:
+        elif self.state["position"].x_val>= 200 or self.state["position"].x_val <=-200 or self.state["position"].y_val>= 200 or self.state["position"].y_val <=-200:
             reward= -500
         else:
             #Calculate distance for current location
