@@ -13,7 +13,7 @@ import gym
 
 val=0
 
-class AirSimcustomEnv_sum(gym.Env):
+class AirSimcustomEnv_base(gym.Env):
     def __init__(self,ip_address="127.0.0.1", step_length=1, image_shape=(84, 84, 1),):
         self.step_length = step_length
         self.image_shape = image_shape
@@ -78,22 +78,24 @@ class AirSimcustomEnv_sum(gym.Env):
         
         #If collision or out of bounds
         if self.state["collision"]:
-            reward = -500
+            reward = -100
             print("collision")
-        elif self.state["position"].x_val>= 200 or self.state["position"].x_val <=-200 or self.state["position"].y_val>= 200 or self.state["position"].y_val <=-200:
-            reward= -500
+        elif self.state["position"].x_val>= 200 or self.state["position"].x_val <=-20 or self.state["position"].y_val>= 50 or self.state["position"].y_val <=-200:
+            reward= -100
         else:
             #Calculate distance for current location
-            dist = 10000000
+            #dist = 10000000
             #for i in range(0, len(pts)):
             print(pts[0][0:2])
             print(quad_pt[0:2])
+            #pts_abs=[abs(i) for i in pts]
+            
             dist = np.linalg.norm(pts[0][0:2]-quad_pt[0:2])
             print(self.drone_state.kinematics_estimated.position)
             print(dist)
             #Get reward based on distance
             reward = -dist / 100
-            reward +=5
+            reward +=1
             
             #if current distance is smaller than the best: add 5 to reward and set new best, else remove 5.
             #if dist <= self.state["Prev_D"]:
@@ -137,11 +139,14 @@ class AirSimcustomEnv_sum(gym.Env):
         #RGB SCENE IMAGES
         img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
         img_rgb = img1d.reshape(response.height, response.width, 3)
-        #img_rgb = np.flipud(img_rgb)
         image = Image.fromarray(img_rgb)
+        im_final = np.array(image.resize((128, 128)))
+        #img_rgb = np.flipud(img_rgb)
+        #image = Image.fromarray(img_rgb)
+        # = np.array(image.convert("L"))
         #cv2.imwrite(str(val)+'_t.png', img_rgb)
-        im_final = np.array(image.resize((128, 128)).convert("L"))
-        img = im_final.reshape([128, 128, 1])
+        #im_final = np.array(image.resize((256, 256)).convert("L"))
+        #img = im_final.reshape([256, 256, 3])
         #cv2.imwrite(str(val)+'_t.png', img)
 
 
@@ -154,7 +159,7 @@ class AirSimcustomEnv_sum(gym.Env):
         self.state["collision"] = collision
         
         val+=1
-        return img
+        return im_final
     
     def _do_action(self, action):
         print(action)
