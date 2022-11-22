@@ -32,7 +32,7 @@ class AirSimcustomEnv_base(gym.Env):
         #success = self.drone.simSetSegmentationObjectID("oil", 54);
         #self.image_request = airsim.ImageRequest(0, airsim.ImageType.Segmentation, False, False)
         
-        self.image_request = airsim.ImageRequest(3, airsim.ImageType.Scene, False, False)
+        self.image_request = airsim.ImageRequest(0, airsim.ImageType.Scene, False, False)
         #self.image_request = airsim.ImageRequest(0, airsim.ImageType.DepthPerspective, True, False)
         self.counter=0
           
@@ -79,20 +79,20 @@ class AirSimcustomEnv_base(gym.Env):
         #If collision or out of bounds
         if self.state["collision"]:
             reward = -100
-            print("collision")
+            #print("collision")
         elif self.state["position"].x_val>= 200 or self.state["position"].x_val <=-20 or self.state["position"].y_val>= 50 or self.state["position"].y_val <=-200:
             reward= -100
         else:
             #Calculate distance for current location
             #dist = 10000000
             #for i in range(0, len(pts)):
-            print(pts[0][0:2])
-            print(quad_pt[0:2])
+            #print(pts[0][0:2])
+            #print(quad_pt[0:2])
             #pts_abs=[abs(i) for i in pts]
             
             dist = np.linalg.norm(pts[0][0:2]-quad_pt[0:2])
-            print(self.drone_state.kinematics_estimated.position)
-            print(dist)
+            #print(self.drone_state.kinematics_estimated.position)
+            #print(dist)
             #Get reward based on distance
             reward = -dist / 100
             reward +=1
@@ -113,7 +113,7 @@ class AirSimcustomEnv_base(gym.Env):
             
             
             
-        print(reward)            
+        #print(reward)            
         done = 0
         if reward <=-10:
             done = 1
@@ -139,8 +139,13 @@ class AirSimcustomEnv_base(gym.Env):
         #RGB SCENE IMAGES
         img1d = np.fromstring(response.image_data_uint8, dtype=np.uint8)
         img_rgb = img1d.reshape(response.height, response.width, 3)
-        image = Image.fromarray(img_rgb)
-        im_final = np.array(image.resize((128, 128)))
+        #sometimes causes ValueError: tile cannot extend outside image (possibly due to no image? solution: create empty image)
+        try:
+            image = Image.fromarray(img_rgb)
+            im_final = np.array(image.resize((128, 128)))
+        except:
+            im_final = np.zeros((128,128,3), np.uint8)
+        
         #img_rgb = np.flipud(img_rgb)
         #image = Image.fromarray(img_rgb)
         # = np.array(image.convert("L"))
@@ -162,7 +167,7 @@ class AirSimcustomEnv_base(gym.Env):
         return im_final
     
     def _do_action(self, action):
-        print(action)
+        #print(action)
         offset = self.interpret_action(action)
         #pos=self.drone.getMultirotorState().kinematics_estimated.position
         #self.drone.moveToPositionAsync(pos.x_val + offset[0],pos.y_val + offset[1],pos.z_val, 25).join()

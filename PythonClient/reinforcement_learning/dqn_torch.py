@@ -65,7 +65,7 @@ env = custom_env_base.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0.
 
 def get_screen():
     screen = env._get_obs().transpose((2, 0, 1))
-    print(screen.shape)
+    #print(screen.shape)
     screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
     screen = torch.from_numpy(screen)
     return resize(screen).unsqueeze(0)
@@ -80,16 +80,16 @@ def get_screen():
 
 BATCH_SIZE = 128
 GAMMA = 0.999
-EPS_START = 0.9
+EPS_START = 0.85
 EPS_END = 0.05
 EPS_DECAY = 200
-TARGET_UPDATE = 10
+TARGET_UPDATE = 100
 
 
 init_screen = get_screen()
 _, _, screen_height, screen_width = init_screen.shape
 n_actions = env.action_space.n
-print(n_actions)
+#print(n_actions)
 policy_net = DQN(screen_height, screen_width, n_actions).to(device)
 target_net = DQN(screen_height, screen_width, n_actions).to(device)
 target_net.load_state_dict(policy_net.state_dict())
@@ -174,9 +174,22 @@ def optimize_model():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
     
-    
-num_episodes = 250
+#policy_net.load_state_dict(torch.load('./model.pth'))
+rew = []
+num_episodes = 500
+max_re= -10
+
+from csv import writer
+def append_list_as_row(file_name, list_of_elem):
+    with open(file_name, 'a+', newline='') as write_obj:
+        csv_writer = writer(write_obj)
+        csv_writer.writerow(list_of_elem)
+
+
+
+tot=0
 for i_episode in range(num_episodes):
+    max_re = -10
     # Initialize the environment and state
     env.reset()
     last_screen = get_screen()
@@ -184,19 +197,27 @@ for i_episode in range(num_episodes):
     state = current_screen #- last_screen
     for t in count():
         # Select and perform an action
-        print(state)
-        print(state.shape)
+        #print(state)
+        #print(state.shape)
         action = select_action(state)
-        _, reward, done, _ = env.step(action.item())
-        reward = torch.tensor([reward], device=device)
+        _, reward_, done, _ = env.step(action.item())
+        
+        reward = torch.tensor([reward_], device=device)
+        print(reward_)
+        if reward_ > max_re:
+            max_re = reward_
+            print("best")
+            print(max_re)
+            
 
         # Observe new state
         last_screen = current_screen
         current_screen = get_screen()
         if not done:
-            next_state = current_screen #- last_screen
+            next_state = current_screen #- last_screen      
         else:
             next_state = None
+            
 
         # Store the transition in memory
         memory.push(state, action, next_state, reward)
@@ -207,7 +228,11 @@ for i_episode in range(num_episodes):
         # Perform one step of the optimization (on the policy network)
         optimize_model()
         if done:
+            print("done")
             episode_durations.append(t + 1)
+            row_contents = [tot, max_re]
+            tot+=1
+            append_list_as_row('out.csv', row_contents)
             #plot_durations()
             break
 
@@ -217,7 +242,27 @@ for i_episode in range(num_episodes):
 
 print('Complete')
 #print(env._get_obs())
-torch.save(policy_net.state_dict(), './model.pth')
+
+torch.save(policy_net.state_dict(), './model_under_cam.pth')
 env.close()
 plt.ioff()
 plt.show()
+print(rew)
+
+plt.figure(2)
+plt.clf()
+durations_t = torch.tensor(rew, dtype=torch.float)
+plt.title('Training...')
+plt.xlabel('Episode')
+plt.ylabel('Reward')
+plt.plot(durations_t.numpy())
+# Take 100 episode averages and plot them too
+if len(durations_t) >= 100:
+    means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
+    means = torch.cat((torch.zeros(99), means))
+    plt.plot(means.numpy())
+
+plt.pause(0.001)  # pause a bit so that plots are updated
+plt.savefig('graph.png')
+
+
