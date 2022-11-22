@@ -7,7 +7,8 @@ import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
 from PIL import Image
-
+from torchvision import models
+from torchsummary import summary
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -32,45 +33,36 @@ class ReplayMemory(object):
         
 
 class DQN(nn.Module):
-    def __init__(self, h, w, outputs):
+    def __init__(self, ln, outputs):
         super(DQN, self).__init__()
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(32)
+        self.lin1 = nn.Linear(ln,12)
+        self.lin2 = nn.Linear(12,36)
+        self.lin3 = nn.Linear(36,outputs)
         
-        def conv2d_size_out(size, kernel_size = 5, stride = 2):
-            return (size - (kernel_size - 1) - 1) // stride  + 1
-        convw = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
-        convh = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
-        linear_input_size = convw * convh * 32
-        self.head = nn.Linear(linear_input_size, outputs)
-        
-        # during optimization. Returns tensor([[left0exp,right0exp]...]).
     def forward(self, x):
-        print(x)
-        print(x.shape)
-        x = x.to(device)
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        return self.head(x.view(x.size(0), -1))
+        x = x.to(device).float()
+        x = self.lin1(x)
+        x = self.lin2(x)
+        x = F.relu(self.lin3(x))
+        
+        return x
         
 resize = T.Compose([T.ToPILImage(),T.Resize(40, interpolation=Image.CUBIC),T.ToTensor()])
 
 
-from airgym.envs import custom_env_base
-env = custom_env_base.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0.5, image_shape=(128, 128, 1),)
+from airgym.envs import custom_env_position
+env = custom_env_position.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0.5, image_shape=(128, 128, 1),)
 
 
 def get_screen():
-    screen = env._get_obs().transpose((2, 0, 1))
-    #print(screen.shape)
-    screen = np.ascontiguousarray(screen, dtype=np.float32) / 255
+    screen = env._get_obs()
+    x=screen.x_val
+    y=screen.y_val
+    z=screen.z_val
+    screen = np.array([float(x),float(y),float(z)])
+    #screen = torch.from_numpy(np.expand_dims(screen, axis=0))
     screen = torch.from_numpy(screen)
-    return resize(screen).unsqueeze(0)
+    return screen.unsqueeze(0)
     
 #print(get_screen())
 #env.reset()
@@ -82,18 +74,22 @@ def get_screen():
 
 BATCH_SIZE = 128
 GAMMA = 0.999
-EPS_START = 0.85
+EPS_START = 0.95
 EPS_END = 0.05
 EPS_DECAY = 200
 TARGET_UPDATE = 100
 
 
 init_screen = get_screen()
-_, _, screen_height, screen_width = init_screen.shape
+print(init_screen.shape)
+
 n_actions = env.action_space.n
 #print(n_actions)
-policy_net = DQN(screen_height, screen_width, n_actions).to(device)
-target_net = DQN(screen_height, screen_width, n_actions).to(device)
+policy_net = DQN(len(init_screen[0]), n_actions).to(device)
+print(policy_net)
+target_net = DQN(len(init_screen[0]), n_actions).to(device)
+
+
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 optimizer = optim.RMSprop(policy_net.parameters())
@@ -105,9 +101,9 @@ def select_action(state):
     eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
     if sample > eps_threshold:
-    #if True:
         with torch.no_grad():
-            return policy_net(state).max(1)[1].view(1, 1)
+            act=policy_net(state).max(1)[1].view(1, 1)
+            return act
     else:
         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
         
