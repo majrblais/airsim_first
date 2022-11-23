@@ -33,40 +33,75 @@ class ReplayMemory(object):
         
 
 class DQN(nn.Module):
-    def __init__(self, ln, outputs):
+    def __init__(self, ln, h, w, outputs):
         super(DQN, self).__init__()
         self.lin1 = nn.Linear(ln,32)
         self.lin2 = nn.Linear(32,64)
         self.lin3 = nn.Linear(64,128)
-        self.lin4 = nn.Linear(128,outputs)
+        self.lin4 = nn.Linear(128,128)
+        
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=5, stride=2)
+        self.bn1 = nn.BatchNorm2d(16)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
+        self.bn2 = nn.BatchNorm2d(32)
+        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
+        self.bn3 = nn.BatchNorm2d(32)
+        self.lin5 = nn.Linear(128,128)
+        
+        self.lin6 = nn.Linear(256,outputs)
+        
         
     def forward(self, x):
-        x = x.to(device).float()
-        x = self.lin1(x)
-        x = self.lin2(x)
-        x = self.lin3(x)
-        x = F.relu(self.lin4(x))
+        p=x[0]
+        img=x[1]
+        p = p.to(device).float()
+        p = self.lin1(p)
+        p = self.lin2(p)
+        p = self.lin3(p)
+        p = self.lin4(p)
+        
+        img = img.to(device)
+        img = F.relu(self.bn1(self.conv1(img)))
+        img = F.relu(self.bn2(self.conv2(img)))
+        img = F.relu(self.bn3(self.conv3(img)))
+        #img = torch.flatten(img)
+        img = img.view(img.size(0), -1)
+        print(img.shape)
+        img = F.relu((self.lin5(img)))
+         
+        combined = torch.cat((p,img),1)
         
         
-        return x
+        out = combined.view(combined.size(0), -1)
+        print(out.shape)
+        out = self.lin6(out)
+        
+        return out
         
 resize = T.Compose([T.ToPILImage(),T.Resize(40, interpolation=Image.CUBIC),T.ToTensor()])
 
 
-from airgym.envs import custom_env_position
-env = custom_env_position.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0.5, image_shape=(128, 128, 1),)
+from airgym.envs import custom_env_multi
+env = custom_env_multi.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0.5, image_shape=(128, 128, 1),)
 
 
 def get_screen():
-    screen = env._get_obs()
+    screen, img = env._get_obs()
+    img = img.transpose((2, 0, 1))
+    img = np.ascontiguousarray(img, dtype=np.float32) / 255
+    img = torch.from_numpy(img)
+    
+    
     x=screen.x_val
     y=screen.y_val
     z=screen.z_val
     #screen = np.array([float(x),float(y),float(z)])
-    screen = np.array([float(x),float(y)])
+    pos = np.array([float(x),float(y)])
     #screen = torch.from_numpy(np.expand_dims(screen, axis=0))
-    screen = torch.from_numpy(screen)
-    return screen.unsqueeze(0)
+    pos = torch.from_numpy(pos)
+    
+    
+    return pos.unsqueeze(0),resize(img).unsqueeze(0)
     
 #print(get_screen())
 #env.reset()
@@ -85,13 +120,20 @@ TARGET_UPDATE = 100
 
 
 init_screen = get_screen()
-print(init_screen.shape)
+print(init_screen[0].shape)
+print(init_screen[1].shape)
+print(init_screen[0])
+print(init_screen[1])
+print(len(init_screen[0]))
+
+_, _, screen_height, screen_width = init_screen[1].shape
 
 n_actions = env.action_space.n
 #print(n_actions)
-policy_net = DQN(len(init_screen[0]), n_actions).to(device)
+policy_net = DQN(len(init_screen[0][0]), screen_height, screen_width, n_actions).to(device)
 print(policy_net)
-target_net = DQN(len(init_screen[0]), n_actions).to(device)
+target_net = DQN(len(init_screen[0][0]), screen_height, screen_width, n_actions).to(device)
+
 
 
 target_net.load_state_dict(policy_net.state_dict())
@@ -99,12 +141,15 @@ target_net.eval()
 optimizer = optim.RMSprop(policy_net.parameters())
 memory = ReplayMemory(1000)
 steps_done = 0
+
+
 def select_action(state):
     global steps_done
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
-    if sample > eps_threshold:
+    #if sample > eps_threshold:
+    if True:
         with torch.no_grad():
             act=policy_net(state).max(1)[1].view(1, 1)
             return act
