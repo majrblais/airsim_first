@@ -88,7 +88,7 @@ env = custom_env_multi.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0
 def get_screen():
     screen, img = env._get_obs()
     img = img.transpose((2, 0, 1))
-    img = np.ascontiguousarray(img, dtype=np.float32) / 255
+    img = np.ascontiguousarray(img, dtype=np.float32) #/ 255
     img = torch.from_numpy(img)
     
     

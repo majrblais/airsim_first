@@ -32,7 +32,7 @@ class AirSimcustomEnv_base(gym.Env):
         #success = self.drone.simSetSegmentationObjectID("oil", 54);
         #self.image_request = airsim.ImageRequest(0, airsim.ImageType.Segmentation, False, False)
         
-        self.image_request = airsim.ImageRequest(0, airsim.ImageType.Scene, False, False)
+        self.image_request = airsim.ImageRequest(3, airsim.ImageType.Scene, False, False)
         #self.image_request = airsim.ImageRequest(0, airsim.ImageType.DepthPerspective, True, False)
         self.counter=0
           
