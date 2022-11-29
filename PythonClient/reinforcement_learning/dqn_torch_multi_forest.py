@@ -81,8 +81,8 @@ class DQN(nn.Module):
 resize = T.Compose([T.ToPILImage(),T.Resize(40, interpolation=Image.CUBIC),T.ToTensor()])
 
 
-from airgym.envs import custom_env_multi
-env = custom_env_multi.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0.5, image_shape=(128, 128, 1),)
+from airgym.envs import custom_env_multi_forest
+env = custom_env_multi_forest.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=2, image_shape=(128, 128, 1),)
 
 
 def get_screen():

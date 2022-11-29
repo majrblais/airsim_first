@@ -8,8 +8,33 @@ client.enableApiControl(True)
 client.armDisarm(True)
 #print(client.getMultirotorState())
 
-client.takeoffAsync().join()
-client.moveToPositionAsync(-10, 10, -10, 5).join()
+##client.takeoffAsync().join()
+#client.moveToPositionAsync(0,0, -30, 5).join()
+
+
+client = airsim.MultirotorClient()
+client.confirmConnection()
+client.enableApiControl(True, "Drone1")
+client.enableApiControl(True, "Drone2")
+client.armDisarm(True, "Drone1")
+client.armDisarm(True, "Drone2")
+
+airsim.wait_key('Press any key to takeoff')
+client.takeoffAsync(vehicle_name="Drone1").join()
+client.takeoffAsync(vehicle_name="Drone2").join()
+
+
+
+
+
+
+
+
+
+
+
+exit()
+
 success = client.simSetSegmentationObjectID("ob", 54);
 print(success)
 

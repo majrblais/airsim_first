@@ -26,7 +26,7 @@ class AirSimcustomEnv_base(gym.Env):
         self.drone = airsim.MultirotorClient(ip_address)
         self.drone.confirmConnection()
         
-        self.action_space = spaces.Discrete(4)
+        self.action_space = spaces.Discrete(5)
         
         #Used for segmentation map
         #success = self.drone.simSetSegmentationObjectID("oil", 54);
@@ -78,7 +78,7 @@ class AirSimcustomEnv_base(gym.Env):
         else:
             
             dist = np.linalg.norm(pts[0][0:2]-quad_pt[0:2])
-            reward = -dist / 100
+            reward = -dist / 50
             reward +=1
             
             
@@ -116,40 +116,50 @@ class AirSimcustomEnv_base(gym.Env):
     
     def _do_action(self, action):
         #print(action)
-        offset = self.interpret_action(action)
+        offset, degree = self.interpret_action(action)
         #pos=self.drone.getMultirotorState().kinematics_estimated.position
         #self.drone.moveToPositionAsync(pos.x_val + offset[0],pos.y_val + offset[1],pos.z_val, 25).join()
         
         #Move by velocity
-        pos=self.drone.getMultirotorState().kinematics_estimated.linear_velocity
-        self.drone.moveByVelocityAsync(pos.x_val + offset[0],pos.y_val + offset[1],0, 5).join()
+        if degree == -1:
+            pos=self.drone.getMultirotorState().kinematics_estimated.linear_velocity
+            self.drone.moveByVelocityAsync(pos.x_val + offset[0],pos.y_val + offset[1],0, 5).join()
+        else:
+            print(degree)
+            pitch, roll, yaw  = airsim.to_eularian_angles(self.drone.simGetVehiclePose().orientation)
+            change = degree
+            yaw = (yaw + change)
+            vx = math.cos(yaw);
+            vy = math.sin(yaw);
+            client.hoverAsync().join()
+            self.drone.moveByVelocityZAsync(vx, vy, -30, 1, airsim.DrivetrainType.ForwardOnly, airsim.YawMode(False, 0)).join()
         
 
         
     def interpret_action(self, action):
-        
+        import math
+        print(action)
+        quad_offset = (0, 0, 0)
+        degree = -1
         #move forward
         if action == 0:
             quad_offset = (self.step_length, 0, 0)
         #move right
         elif action == 1:
-            quad_offset = (0, self.step_length, 0)
+            degree = math.pi
         #move down
-        #elif action == 2:
-        #    quad_offset = (0, 0, self.step_length)
-        #move backward
         elif action == 2:
-            quad_offset = (-self.step_length, 0, 0)
-        #move left    
+            degree = -math.pi
+        #move backward
         elif action == 3:
-            quad_offset = (0, -self.step_length, 0)
-        #move up    
-        #elif action == 5:
-        #    quad_offset = (0, 0, -self.step_length)
+            degree = 2*math.pi
+        #move left    
+        elif action == 4:
+            degree = 2*-math.pi
         #dont move    
         else:
             quad_offset = (0, 0, 0)
 
-        return quad_offset
+        return quad_offset, degree
 
 

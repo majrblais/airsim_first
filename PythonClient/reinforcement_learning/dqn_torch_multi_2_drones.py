@@ -16,7 +16,7 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-Transition = namedtuple('Transition',('state', 'action', 'next_state', 'reward'))
+Transition = namedtuple('Transition',('state', 'action1', 'action2', 'next_state', 'reward'))
 
 class ReplayMemory(object):
     def __init__(self, capacity):
@@ -33,75 +33,145 @@ class ReplayMemory(object):
         
 
 class DQN(nn.Module):
-    def __init__(self, ln, h, w, outputs):
+    def __init__(self, ln1, ln2, h1, w1, h2, w2, outputs):
         super(DQN, self).__init__()
-        self.lin1 = nn.Linear(ln,32)
-        self.lin2 = nn.Linear(32,64)
-        self.lin3 = nn.Linear(64,128)
-        self.lin4 = nn.Linear(128,128)
+        self.lin1a = nn.Linear(ln1,32)
+        self.lin2a = nn.Linear(32,64)
+        self.lin3a = nn.Linear(64,128)
+
         
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=5, stride=2)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=5, stride=2)
-        self.bn2 = nn.BatchNorm2d(32)
-        self.conv3 = nn.Conv2d(32, 32, kernel_size=5, stride=2)
-        self.bn3 = nn.BatchNorm2d(32)
-        self.lin5 = nn.Linear(128,128)
+        self.lin1b = nn.Linear(ln2,32)
+        self.lin2b = nn.Linear(32,64)
+        self.lin3b = nn.Linear(64,128)
+
+
+        self.lin1c = nn.Linear(256,128)
         
-        self.lin6 = nn.Linear(256,outputs)
+        
+        self.conv1a = nn.Conv2d(3, 16, kernel_size=5, stride=2)
+        self.bn1a = nn.BatchNorm2d(16)
+        self.conv2a = nn.Conv2d(16, 32, kernel_size=5, stride=2)
+        self.bn2a = nn.BatchNorm2d(32)
+        self.conv3a = nn.Conv2d(32, 32, kernel_size=5, stride=2)
+        self.bn3a = nn.BatchNorm2d(32)
+        self.lin5a = nn.Linear(128,128)
+
+        self.conv1b = nn.Conv2d(3, 16, kernel_size=5, stride=2)
+        self.bn1b = nn.BatchNorm2d(16)
+        self.conv2b = nn.Conv2d(16, 32, kernel_size=5, stride=2)
+        self.bn2b = nn.BatchNorm2d(32)
+        self.conv3b = nn.Conv2d(32, 32, kernel_size=5, stride=2)
+        self.bn3b = nn.BatchNorm2d(32)
+        self.lin5b = nn.Linear(128,128)
+        
+        
+        self.lin2c = nn.Linear(384,128)
+        self.lin3c = nn.Linear(128,256)
+        
+        
+        self.lin4c = nn.Linear(256,128)
+        
+        self.lin4d = nn.Linear(128,64)
+        self.lin5d = nn.Linear(64,4)
+        
+        self.lin4e = nn.Linear(128,64)
+        self.lin5e = nn.Linear(64,4)
         
         
     def forward(self, x):
-        p=x[0]
-        img=x[1]
-        p = p.to(device).float()
-        p = self.lin1(p)
-        p = self.lin2(p)
-        p = self.lin3(p)
-        p = self.lin4(p)
+        p1=x[0]
+        p2=x[1]
         
-        img = img.to(device)
-        img = F.relu(self.bn1(self.conv1(img)))
-        img = F.relu(self.bn2(self.conv2(img)))
-        img = F.relu(self.bn3(self.conv3(img)))
-        #img = torch.flatten(img)
-        img = img.view(img.size(0), -1)
-        print(img.shape)
-        img = F.relu((self.lin5(img)))
-         
-        combined = torch.cat((p,img),1)
+        img1=x[2]
+        img2=x[3]
         
         
+        p1 = p1.to(device).float()
+        p1 = self.lin1a(p1)
+        p1 = self.lin2a(p1)
+        p1 = self.lin3a(p1)
+
+        p2 = p2.to(device).float()
+        p2 = self.lin1b(p2)
+        p2 = self.lin2b(p2)
+        p2 = self.lin3b(p2)
+        
+        combinedp = torch.cat((p1,p2),1)
+        outp = combinedp.view(combinedp.size(0), -1)   
+        outp = self.lin1c(outp)
+        
+        
+        img1 = img1.to(device)
+        img1 = F.relu(self.bn1a(self.conv1a(img1)))
+        img1 = F.relu(self.bn2a(self.conv2a(img1)))
+        img1 = F.relu(self.bn3a(self.conv3a(img1)))
+        img1 = img1.view(img1.size(0), -1)
+        img1 = F.relu((self.lin5a(img1)))
+
+        img2 = img2.to(device)
+        img2 = F.relu(self.bn1b(self.conv1b(img2)))
+        img2 = F.relu(self.bn2b(self.conv2b(img2)))
+        img2 = F.relu(self.bn3b(self.conv3b(img2)))
+        img2 = img2.view(img2.size(0), -1)
+        img2 = F.relu((self.lin5b(img2)))
+        
+
+        combinedimg = torch.cat((img1,img2),1)
+        combinedimg = combinedimg.view(combinedimg.size(0), -1)
+        
+        
+        combined = torch.cat((combinedimg,outp),1)
         out = combined.view(combined.size(0), -1)
-        print(out.shape)
-        out = self.lin6(out)
+        out = self.lin2c(out)
+        out = self.lin3c(out)
+        out = self.lin4c(out)
         
-        return out
+        
+        out1 = self.lin4d(out)
+        out1 = self.lin5d(out1)
+        
+
+        out2 = self.lin4e(out)
+        out2 = self.lin5e(out2)
+        
+        
+        return out1,out2
         
 resize = T.Compose([T.ToPILImage(),T.Resize(40, interpolation=Image.CUBIC),T.ToTensor()])
 
 
-from airgym.envs import custom_env_multi
-env = custom_env_multi.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0.5, image_shape=(128, 128, 1),)
+from airgym.envs import custom_env_multi_2_drones
+env = custom_env_multi_2_drones.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=0.5, image_shape=(128, 128, 1),)
 
 
 def get_screen():
-    screen, img = env._get_obs()
-    img = img.transpose((2, 0, 1))
-    img = np.ascontiguousarray(img, dtype=np.float32) #/ 255
-    img = torch.from_numpy(img)
+    screen1,screen2, img1, img2 = env._get_obs()
+
+    img1 = img1.transpose((2, 0, 1))
+    img1 = np.ascontiguousarray(img1, dtype=np.float32) #/ 255
+    img1 = torch.from_numpy(img1)
+
+    img2 = img2.transpose((2, 0, 1))
+    img2 = np.ascontiguousarray(img2, dtype=np.float32) #/ 255
+    img2 = torch.from_numpy(img2)
     
     
-    x=screen.x_val
-    y=screen.y_val
-    z=screen.z_val
+    x1=screen1.x_val
+    y1=screen1.y_val
+    z1=screen1.z_val
+
+    x2=screen2.x_val
+    y2=screen2.y_val
+    z=screen2.z_val
     #screen = np.array([float(x),float(y),float(z)])
-    pos = np.array([float(x),float(y)])
+    pos1 = np.array([float(x1),float(y1)])
+    pos2 = np.array([float(x2),float(y2)])
     #screen = torch.from_numpy(np.expand_dims(screen, axis=0))
-    pos = torch.from_numpy(pos)
+    pos1 = torch.from_numpy(pos1)
+    pos2 = torch.from_numpy(pos2)
     
     
-    return pos.unsqueeze(0),resize(img).unsqueeze(0)
+    return pos1.unsqueeze(0), pos2.unsqueeze(0) , resize(img1).unsqueeze(0), resize(img2).unsqueeze(0)
     
 #print(get_screen())
 #env.reset()
@@ -120,21 +190,19 @@ TARGET_UPDATE = 100
 
 
 init_screen = get_screen()
-print(init_screen[0].shape)
-print(init_screen[1].shape)
-print(init_screen[0])
-print(init_screen[1])
-print(len(init_screen[0]))
+print(init_screen)
 
-_, _, screen_height, screen_width = init_screen[1].shape
+_, _, screen_height1, screen_width1 = init_screen[2].shape
+
+_, _, screen_height2, screen_width2 = init_screen[3].shape
+
 
 n_actions = env.action_space.n
 #print(n_actions)
-policy_net = DQN(len(init_screen[0][0]), screen_height, screen_width, n_actions).to(device)
+
+policy_net = DQN(len(init_screen[0][0]), len(init_screen[0][0]), screen_height1, screen_width1, screen_height2, screen_width2, n_actions).to(device)
 print(policy_net)
-target_net = DQN(len(init_screen[0][0]), screen_height, screen_width, n_actions).to(device)
-
-
+target_net = DQN(len(init_screen[0][0]), len(init_screen[0][0]), screen_height1, screen_width1, screen_height2, screen_width2, n_actions).to(device)
 
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
@@ -148,11 +216,16 @@ def select_action(state):
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
-    if sample > eps_threshold:
-    #if True:
+    #if sample > eps_threshold:
+    if True:
         with torch.no_grad():
-            act=policy_net(state).max(1)[1].view(1, 1)
-            return act
+            act=policy_net(state)
+            #print(act[0].max(1)[1].view(1, 1))
+            #print(act[1].max(1)[1].view(1, 1))
+            
+            act1=act[0].max(1)[1].view(1, 1)
+            act2=act[1].max(1)[1].view(1, 1)
+            return act1,act2
     else:
         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
         
@@ -247,11 +320,11 @@ for i_episode in range(num_episodes):
         # Select and perform an action
         #print(state)
         #print(state.shape)
-        action = select_action(state)
-        _, reward_, done, _ = env.step(action.item())
+        action1, action2 = select_action(state)
+        print(action1,action2)
+        _, reward_, done, _ = env.step(action1.item(),action2.item())
         
         reward = torch.tensor([reward_], device=device)
-        print(reward_)
         if reward_ > max_re:
             max_re = reward_
             print("best")
@@ -268,7 +341,7 @@ for i_episode in range(num_episodes):
             
 
         # Store the transition in memory
-        memory.push(state, action, next_state, reward)
+        memory.push(state, action1, action2, next_state, reward)
 
         # Move to the next state
         state = next_state

@@ -32,7 +32,7 @@ class AirSimcustomEnv_base(gym.Env):
         #success = self.drone.simSetSegmentationObjectID("oil", 54);
         #self.image_request = airsim.ImageRequest(0, airsim.ImageType.Segmentation, False, False)
         
-        self.image_request = airsim.ImageRequest(3, airsim.ImageType.Scene, False, False)
+        self.image_request = airsim.ImageRequest(0, airsim.ImageType.Scene, False, False)
         #self.image_request = airsim.ImageRequest(0, airsim.ImageType.DepthPerspective, True, False)
         self.counter=0
           
@@ -52,7 +52,7 @@ class AirSimcustomEnv_base(gym.Env):
         self.drone.enableApiControl(True)
         self.drone.armDisarm(True)
 
-        self.drone.moveToPositionAsync(0, 0, -30, 5).join()
+        self.drone.moveToPositionAsync(0, 0, -75, 5).join()
         self.drone.moveByVelocityAsync(0, 0, 0, 5).join()
         
 
@@ -66,18 +66,20 @@ class AirSimcustomEnv_base(gym.Env):
         
     def _compute_reward(self):
         #desired location & current location
-        pts = [np.array([120, -120, -30.0]),]
+        pts = [np.array([-225, -950, -75.0]),np.array([-175, -900, -75.0]),np.array([-250, -900, -75.0]),np.array([-175, -1000, -75.0]),np.array([-200, -1000, -75.0])]
         quad_pt = np.array(list((self.state["position"].x_val,self.state["position"].y_val,self.state["position"].z_val,)))
         
         #If collision or out of bounds
         if self.state["collision"]:
             reward = -100
             #print("collision")
-        elif self.state["position"].x_val>= 200 or self.state["position"].x_val <=-20 or self.state["position"].y_val>= 50 or self.state["position"].y_val <=-200:
+        elif self.state["position"].x_val>= 300 or self.state["position"].x_val <=-400 or self.state["position"].y_val>= 30 or self.state["position"].y_val <=-1220:
             reward= -100
         else:
+            dist = 10000000
+            for i in range(0, len(pts) - 1):
+                dist = min(dist,np.linalg.norm(np.cross((quad_pt - pts[i]), (quad_pt - pts[i + 1])))/ np.linalg.norm(pts[i] - pts[i + 1]),)
             
-            dist = np.linalg.norm(pts[0][0:2]-quad_pt[0:2])
             reward = -dist / 100
             reward +=1
             
