@@ -81,7 +81,7 @@ def get_screen():
 #plt.show()
 
 
-BATCH_SIZE = 128
+BATCH_SIZE = 2
 GAMMA = 0.999
 EPS_START = 0.85
 EPS_END = 0.05
@@ -105,38 +105,21 @@ def select_action(state):
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
-    if sample > eps_threshold:
-    #if True:
+    #if sample > eps_threshold:
+    if True:
         with torch.no_grad():
             return policy_net(state).max(1)[1].view(1, 1)
     else:
         return torch.tensor([[random.randrange(n_actions)]], device=device, dtype=torch.long)
         
 episode_durations = []
-def plot_durations():
-    plt.figure(2)
-    plt.clf()
-    durations_t = torch.tensor(episode_durations, dtype=torch.float)
-    plt.title('Training...')
-    plt.xlabel('Episode')
-    plt.ylabel('Duration')
-    plt.plot(durations_t.numpy())
-    # Take 100 episode averages and plot them too
-    if len(durations_t) >= 100:
-        means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
-        plt.plot(means.numpy())
 
-    plt.pause(0.001)  # pause a bit so that plots are updated
-    #if is_ipython:
-    #    display.clear_output(wait=True)
-    #    display.display(plt.gcf())
-        
         
 def optimize_model():
     if len(memory) < BATCH_SIZE:
         return
     transitions = memory.sample(BATCH_SIZE)
+
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
     # detailed explanation). This converts batch-array of Transitions
     # to Transition of batch-arrays.
@@ -148,10 +131,19 @@ def optimize_model():
                                           batch.next_state)), device=device, dtype=torch.bool)
     non_final_next_states = torch.cat([s for s in batch.next_state
                                                 if s is not None])
+                                                
+    print(non_final_mask)
+    print(non_final_next_states)
+    print(non_final_mask.shape)
+    print(non_final_next_states.shape)
+    exit()
+                                                
     state_batch = torch.cat(batch.state)
     action_batch = torch.cat(batch.action)
     reward_batch = torch.cat(batch.reward)
-
+    
+    
+    
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     # columns of actions taken. These are the actions which would've been taken
     # for each batch state according to policy_net

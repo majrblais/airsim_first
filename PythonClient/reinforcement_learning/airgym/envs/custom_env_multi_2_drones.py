@@ -162,7 +162,7 @@ class AirSimcustomEnv_base(gym.Env):
         
         
         val+=1
-        return [self.drone_state1.kinematics_estimated.position, self.drone_state2.kinematics_estimated.position, im_final1, im_final2]
+        return self.drone_state1.kinematics_estimated.position, self.drone_state2.kinematics_estimated.position, im_final1, im_final2
     
     def _do_action(self, action1, action2):
         #print(action)
