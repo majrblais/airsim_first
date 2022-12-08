@@ -2,6 +2,7 @@ import airsim
 import os
 from PIL import Image
 import numpy as np
+import time
 client = airsim.MultirotorClient()
 client.confirmConnection()
 client.enableApiControl(True)
@@ -19,18 +20,33 @@ client.enableApiControl(True, "Drone2")
 client.armDisarm(True, "Drone1")
 client.armDisarm(True, "Drone2")
 
-airsim.wait_key('Press any key to takeoff')
 client.takeoffAsync(vehicle_name="Drone1").join()
 client.takeoffAsync(vehicle_name="Drone2").join()
 
+client.moveToPositionAsync(0, 0, -100, 10,vehicle_name="Drone1").join()
+client.moveToPositionAsync(0, 0, -100, 10,vehicle_name="Drone2").join()
+
+lt=[]
+for i in range(1,201):
+    lt.append([0,-i])
+
+for i in range(1,101):
+    lt.append([-i,-200])
+
+for i in range(1,301):
+    lt.append([-100,-200-i])
+
+for i in range(1,126):
+    lt.append([-100-i,-500])
+
+for i in range(1,401):
+    lt.append([-225,-500-i])
 
 
-
-
-
-
-
-
+for i in range(len(lt)):
+    client.moveToPositionAsync(lt[i][0], lt[i][1], -100, 10,vehicle_name="Drone1").join()
+    client.hoverAsync(vehicle_name="Drone1").join()
+    print(client.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.position)
 
 
 exit()

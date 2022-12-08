@@ -20,12 +20,27 @@ class AirSimcustomEnv_base(gym.Env):
         self.observation_space = spaces.Box(0, 255, shape=image_shape, dtype=np.uint8)
         
         #Current state of agent    
-        self.state = {"position1": np.zeros(3),"position2": np.zeros(3), "collision1": False, "collision2": False , "prev_position1": np.zeros(3), "prev_position2": np.zeros(3)}
+        self.state = {"position1": np.zeros(3),"position2": np.zeros(3), "collision1": False, "collision2": False , "prev_position1": np.zeros(3), "prev_position2": np.zeros(3), "track_pos" : 0}
         
         #Used to connect to ue/rl
         self.drone = airsim.MultirotorClient(ip_address)
         self.drone.confirmConnection()
-        
+        self.track = []
+        for i in range(1,201):
+            self.track.append([0,-i])
+
+        for i in range(1,101):
+            self.track.append([-i,-200])
+
+        for i in range(1,301):
+            self.track.append([-100,-200-i])
+
+        for i in range(1,126):
+            self.track.append([-100-i,-500])
+
+        for i in range(1,401):
+            self.track.append([-225,-500-i])
+
         #4actionsx2drones
         self.action_space = spaces.Discrete(8)
         
@@ -56,33 +71,60 @@ class AirSimcustomEnv_base(gym.Env):
         self.drone.armDisarm(True, "Drone1")
         self.drone.armDisarm(True, "Drone2")
 
-        self.drone.moveToPositionAsync(0, 0, -30, 5, vehicle_name="Drone1").join()
+        self.drone.moveToPositionAsync(0, 0, -75, 5, vehicle_name="Drone1").join()
         self.drone.moveByVelocityAsync(0, 0, 0, 5, vehicle_name="Drone1").join()
         
-        self.drone.moveToPositionAsync(0, 0, -30, 5, vehicle_name="Drone2").join()
+        self.drone.moveToPositionAsync(0, 0, -75, 5, vehicle_name="Drone2").join()
         self.drone.moveByVelocityAsync(0, 0, 0, 5, vehicle_name="Drone2").join()
+        
+        self.state["track_pos"]=0
         
         #print(self.drone.getMultirotorState(vehicle_name="Drone1"))
         #print(self.drone.getMultirotorState(vehicle_name="Drone2"))
         
         
     def step(self, action1, action2):
+        
+        #print(self.track[self.state["track_pos"]])
+        
+        #print("current state")
+        #print(self.drone.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.position.x_val)
+        #print(self.drone.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.position.y_val)
+        #print(self.drone.getMultirotorState(vehicle_name="Drone2").kinematics_estimated.position.x_val)
+        #print(self.drone.getMultirotorState(vehicle_name="Drone2").kinematics_estimated.position.y_val)
+        
+        #print(action1,action2)
+        
+        #print("next state")
         self._do_action(action1, action2)
+        
+        #print(self.drone.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.position.x_val)
+        #print(self.drone.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.position.y_val)
+        #print(self.drone.getMultirotorState(vehicle_name="Drone2").kinematics_estimated.position.x_val)
+        #print(self.drone.getMultirotorState(vehicle_name="Drone2").kinematics_estimated.position.y_val)
+        
         obs = self._get_obs()
         reward, done = self._compute_reward()
+        self.state["track_pos"]+=1
 
         return obs, reward, done, self.state
         
     def _compute_reward(self):
         #desired location & current location
-        pts = [np.array([-225, -950, -75.0]),np.array([-175, -900, -75.0]),np.array([-250, -900, -75.0]),np.array([-175, -1000, -75.0]),np.array([-200, -1000, -75.0])]
+        pts = [np.array([self.track[self.state["track_pos"]][0],self.track[self.state["track_pos"]][1], -75.0])]
+        
+        
         quad_pt1 = np.array(list((self.state["position1"].x_val,self.state["position1"].y_val,self.state["position1"].z_val,)))
         quad_pt2 = np.array(list((self.state["position2"].x_val,self.state["position2"].y_val,self.state["position2"].z_val,)))
         
         #If collision or out of bounds
-        print("dista between drones")
-
+        
+        print("distance between drones:")
         print(np.linalg.norm(quad_pt1[0:2]-quad_pt2[0:2]))
+        
+        print("distance between center:")
+        print(np.linalg.norm(pts[0][0:2]-quad_pt1[0:2]))
+        print(np.linalg.norm(pts[0][0:2]-quad_pt2[0:2]))
         
         if self.state["collision1"] or self.state["collision2"]:
             reward = -100
@@ -90,52 +132,27 @@ class AirSimcustomEnv_base(gym.Env):
         elif np.linalg.norm(quad_pt1[0:2]-quad_pt2[0:2]) >= 10:
             reward = -100
             print("distance")
+            
+        elif (np.linalg.norm(pts[0][0:2]-quad_pt1[0:2]) >= 10) or (np.linalg.norm(pts[0][0:2]-quad_pt2[0:2])>=10):
+            reward = -100
+            print("circle")
         else:
             
             dist1 = np.linalg.norm(pts[0][0:2]-quad_pt1[0:2])
             dist2 = np.linalg.norm(pts[0][0:2]-quad_pt2[0:2])
-            reward = (-dist1 + -dist2) / 100
+            reward = (-dist1 + -dist2) 
+            print("reward:")
             print(reward)
             
         #print(reward)            
         done = 0
-        if reward <=-25:
+        if reward <=-15:
             done = 1
             
         return reward, done    
     
     def _get_obs(self):
         global val
-        responses1 = self.drone.simGetImages([self.image_request],vehicle_name="Drone1")
-        responses2 = self.drone.simGetImages([self.image_request],vehicle_name="Drone2")
-        
-        response1 = responses1[0]
-        response2 = responses2[0]
-        
-        img1 = np.fromstring(response1.image_data_uint8, dtype=np.uint8)
-        img_rgb1 = img1.reshape(response1.height, response1.width, 3)
-        
-        img2 = np.fromstring(response2.image_data_uint8, dtype=np.uint8)
-        img_rgb2 = img2.reshape(response2.height, response2.width, 3)
-        
-        #empty/broken image 1
-        try:
-            image1 = Image.fromarray(img_rgb1)
-            im_final1 = np.array(image1.resize((128, 128)))
-            
-        except:
-            im_final1 = np.zeros((128,128,3), np.uint8)
-
-        #empty/broken image 2
-        try:
-            image2 = Image.fromarray(img_rgb2)
-            im_final2 = np.array(image2.resize((128, 128)))
-        except:
-            im_final2 = np.zeros((128,128,3), np.uint8)
-            
-            
-            
-            
         
         self.drone_state1 = self.drone.getMultirotorState(vehicle_name="Drone1")
         self.drone_state2 = self.drone.getMultirotorState(vehicle_name="Drone2")
@@ -156,7 +173,8 @@ class AirSimcustomEnv_base(gym.Env):
         
         
         val+=1
-        return self.drone_state1.kinematics_estimated.position, self.drone_state2.kinematics_estimated.position, im_final1, im_final2
+
+        return self.drone_state1.kinematics_estimated.position, self.drone_state2.kinematics_estimated.position, self.track[self.state["track_pos"]]
     
     def _do_action(self, action1, action2):
         #print(action)
@@ -165,12 +183,23 @@ class AirSimcustomEnv_base(gym.Env):
         #self.drone.moveToPositionAsync(pos.x_val + offset[0],pos.y_val + offset[1],pos.z_val, 25).join()
         
         #Move by velocity
-        pos1=self.drone.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.linear_velocity
-        pos2=self.drone.getMultirotorState(vehicle_name="Drone2").kinematics_estimated.linear_velocity
+        pos1=self.drone.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.position
+        pos2=self.drone.getMultirotorState(vehicle_name="Drone2").kinematics_estimated.position
         
-        self.drone.moveByVelocityAsync(pos1.x_val + offset1[0],pos1.y_val + offset1[1],0, 5, vehicle_name="Drone1").join()
-        self.drone.moveByVelocityAsync(pos2.x_val + offset2[0],pos2.y_val + offset2[1],0, 5, vehicle_name="Drone2").join()
         
+        print(self.drone.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.position)
+        print(self.drone.getMultirotorState(vehicle_name="Drone2").kinematics_estimated.position)
+        print(offset1)
+        print(offset2)
+        #self.drone.moveByVelocityAsync(pos1.x_val + offset1[0],pos1.y_val + offset1[1],0, 1, vehicle_name="Drone1").join()
+        #self.drone.moveByVelocityAsync(pos2.x_val + offset2[0],pos2.y_val + offset2[1],0, 1, vehicle_name="Drone2").join()
+        
+        self.drone.moveToPositionAsync(pos1.x_val + offset1[0],pos1.y_val + offset1[1],-75, 1, vehicle_name="Drone1").join()
+        self.drone.moveToPositionAsync(pos2.x_val + offset2[0],pos2.y_val + offset2[1],-75, 1, vehicle_name="Drone2").join()
+        
+        
+        print(self.drone.getMultirotorState(vehicle_name="Drone1").kinematics_estimated.position)
+        print(self.drone.getMultirotorState(vehicle_name="Drone2").kinematics_estimated.position)
         
 
         
