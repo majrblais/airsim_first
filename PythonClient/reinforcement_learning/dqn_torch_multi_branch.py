@@ -14,7 +14,7 @@ import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
-
+torch.autograd.set_detect_anomaly(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 Transition = namedtuple('Transition',('state_p1','state_p2','state_p3', 'action1', 'action2', 'next_state_p1', 'next_state_p2','next_state_p3','reward'))
 
@@ -93,14 +93,17 @@ class DQN(nn.Module):
         if p2 is None :
             print("p1")
             combinedp = torch.cat((p1,p3),1)
+            outp = combinedp.view(combinedp.size(0), -1)   
+            outp = self.lin2d(outp)
+            
         if p1 is None:
             print("p2")
             combinedp = torch.cat((p2, p3),1)
-            
-            
+            outp = combinedp.view(combinedp.size(0), -1)   
+            outp = self.lin2d(outp)
         #combinedp = torch.cat((p1,p2, p3),1)
-        outp = combinedp.view(combinedp.size(0), -1)   
-        outp = self.lin2d(outp)
+
+        
 
         
         if p2 is None:
@@ -153,12 +156,12 @@ def get_screen():
     return pos1.unsqueeze(0), pos2.unsqueeze(0) , pos3.unsqueeze(0)
     
 
-BATCH_SIZE = 16
+BATCH_SIZE = 8
 GAMMA = 0.997
 EPS_START = 0.95
 EPS_END = 0.05
 EPS_DECAY = 200
-TARGET_UPDATE = 100
+TARGET_UPDATE = 10
 
 
 init_screen_p1, init_screen_p2, init_screen_p3  = get_screen()
@@ -183,11 +186,9 @@ def paramgen(policy_net=policy_net, p1=None, p2=None):
         #yield ls1 model, the in part is inverted in a sense
         
         if (param[0] not in ls2) and p1:
-            print(param[0])
             yield param[1] 
         #yields ls2 model
         if (param[0] not in ls1) and p2:
-            print(param[0])
             yield param[1]
     
 
@@ -213,8 +214,8 @@ def select_action(state_p1=None, state_p2=None, state_p3=None):
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
-    #if sample > eps_threshold:
-    if True:
+    if sample > eps_threshold:
+    #if True:
         with torch.no_grad():
             if state_p2 is None:
                 act=policy_net(x_p1=state_p1,x_p3=state_p3)
@@ -256,48 +257,49 @@ def optimize_model(p1=None, p2=None):
 
     if all(s is None for s in batch.next_state_p1):
         return
+        
+    if all(s is None for s in batch.next_state_p2):
+        return
+    # Compute a mask of non-final states and concatenate the batch elements
+    # (a final state would've been the one after which simulation ended)
+    
+    
+    print("loss1")
     # Compute a mask of non-final states and concatenate the batch elements
     # (a final state would've been the one after which simulation ended)
     non_final_mask_p1 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p1)), device=device, dtype=torch.bool)
-    non_final_mask_p2 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p2)), device=device, dtype=torch.bool)
     non_final_mask_p3 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p3)), device=device, dtype=torch.bool)
-   
+
     non_final_next_states_p1 = torch.cat([s for s in batch.next_state_p1 if s is not None])
-    non_final_next_states_p2 = torch.cat([s for s in batch.next_state_p2 if s is not None])
     non_final_next_states_p3 = torch.cat([s for s in batch.next_state_p3 if s is not None])
+
                                                      
 
     state_batch_p1 = torch.cat(batch.state_p1)
-    state_batch_p2 = torch.cat(batch.state_p2)
     state_batch_p3 = torch.cat(batch.state_p3)
-
     action_batch1 = torch.cat(batch.action1)
-    action_batch2 = torch.cat(batch.action2)
     reward_batch = torch.cat(batch.reward)
 
-    
-    state_action_values1 = policy_net(state_batch_p1, state_batch_p2,state_batch_p3)[0].gather(1, action_batch1)
-    state_action_values2 = policy_net(state_batch_p1, state_batch_p2,state_batch_p3)[0].gather(1, action_batch2)
-    
+    # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
+    # columns of actions taken. These are the actions which would've been taken
+    # for each batch state according to policy_net
+    state_action_values1=policy_net(x_p1=state_batch_p1,x_p3=state_batch_p3).gather(1, action_batch1)
 
+    
+    # Compute V(s_{t+1}) for all next states.
+    # Expected values of actions for non_final_next_states are computed based
+    # on the "older" target_net; selecting their best reward with max(1)[0].
+    # This is merged based on the mask, such that we'll have either the expected
+    # state value or 0 in case the state was final.
     next_state_values1 = torch.zeros(BATCH_SIZE, device=device)
-    next_state_values2 = torch.zeros(BATCH_SIZE, device=device)
+    next_state_values1[non_final_mask_p1]=(target_net(x_p1=non_final_next_states_p1, x_p3=non_final_next_states_p3)).max(1)[0].detach()
     
-    t1=(target_net(non_final_next_states_p1, non_final_next_states_p2, non_final_next_states_p3)[0]).max(1)[0].detach()
-    next_state_values1[non_final_mask_p1] = t1
-
-    t2=(target_net(non_final_next_states_p1, non_final_next_states_p2, non_final_next_states_p3)[0]).max(1)[0].detach()
-    next_state_values2[non_final_mask_p2] = t2
-
-
+    # Compute the expected Q values
     expected_state_action_values1 = (next_state_values1 * GAMMA) + reward_batch
-    expected_state_action_values3 = (next_state_values3 * GAMMA) + reward_batch
-
-    # Compute Huber loss
+    
+    #Compute Huber loss
     criterion = nn.SmoothL1Loss()
     loss1 = criterion(state_action_values1, expected_state_action_values1.unsqueeze(1))
-    loss2 = criterion(state_action_values2, expected_state_action_values2.unsqueeze(1))
-    #loss3 = criterion(state_action_values3, expected_state_action_values3.unsqueeze(1))
 
     optimizer1.zero_grad()
     loss1.backward()
@@ -306,12 +308,44 @@ def optimize_model(p1=None, p2=None):
         param.grad.data.clamp_(-1, 1)
     optimizer1.step()
     
+    print("loss2")
+    
+    non_final_mask_p2 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p2)), device=device, dtype=torch.bool)
+    non_final_mask_p3 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p3)), device=device, dtype=torch.bool)
+    
+    non_final_next_states_p2 = torch.cat([s for s in batch.next_state_p2 if s is not None])
+    non_final_next_states_p3 = torch.cat([s for s in batch.next_state_p3 if s is not None])
+
+    state_batch_p2 = torch.cat(batch.state_p2)
+    state_batch_p3 = torch.cat(batch.state_p3)
+
+
+    action_batch2 = torch.cat(batch.action2)
+    reward_batch = torch.cat(batch.reward)
+
+    state_action_values2 = policy_net(x_p2=state_batch_p2,x_p3=state_batch_p3).gather(1, action_batch2)
+
+    next_state_values2 = torch.zeros(BATCH_SIZE, device=device)
+    
+
+    t2=(target_net( x_p2=non_final_next_states_p2, x_p3=non_final_next_states_p3)).max(1)[0].detach()
+    next_state_values2[non_final_mask_p2] = t2
+
+    expected_state_action_values2 = (next_state_values2 * GAMMA) + reward_batch
+
+    # Compute Huber loss
+    criterion = nn.SmoothL1Loss()
+    loss2 = criterion(state_action_values2, expected_state_action_values2.unsqueeze(1))
+    #loss3 = criterion(state_action_values3, expected_state_action_values3.unsqueeze(1))
+    
+    
     optimizer2.zero_grad()
     loss2.backward()
     for param in paramgen(policy_net,p2=1):
         #print(param.grad.data)
         param.grad.data.clamp_(-1, 1)
     optimizer2.step()
+
     
     
 #policy_net.load_state_dict(torch.load('./model.pth'))
@@ -387,7 +421,6 @@ for i_episode in range(num_episodes):
         if t % TARGET_UPDATE == 0:
             target_net.load_state_dict(policy_net.state_dict())
         
-        exit()
 
 print('Complete')
 #print(env._get_obs())
