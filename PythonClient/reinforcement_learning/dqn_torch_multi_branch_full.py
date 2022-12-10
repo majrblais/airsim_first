@@ -147,7 +147,7 @@ def get_screen():
     return pos1.unsqueeze(0), pos2.unsqueeze(0) , pos3.unsqueeze(0)
     
 
-BATCH_SIZE = 8
+BATCH_SIZE = 4
 GAMMA = 0.997
 EPS_START = 0.95
 EPS_END = 0.05
@@ -177,7 +177,7 @@ def paramgen(policy_net=policy_net, i1=None, i2=None):
         #yield ls1 model, the in part is inverted in a sense
         
         if (param[0] not in ls2) and i1:
-            yield param[1] 
+            yield param[1]
         #yields ls2 model
         if (param[0] not in ls1) and i2:
             yield param[1]
@@ -194,8 +194,8 @@ def paramgen(policy_net=policy_net, i1=None, i2=None):
 #    print(p) 
     
 
-optimizer1 = optim.AdamW(paramgen(policy_net,i1=1))
-optimizer2 = optim.AdamW(paramgen(policy_net,i2=1))
+optimizer1 = optim.AdamW(paramgen(policy_net,i1=1,i2=None))
+optimizer2 = optim.AdamW(paramgen(policy_net,i1=None,i2=1))
 
 memory = ReplayMemory(2000)
 steps_done = 0
@@ -253,11 +253,13 @@ def optimize_model(i1=None, i2=None):
     non_final_mask_p3 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p3)), device=device, dtype=torch.bool)
 
     non_final_next_states_p1 = torch.cat([s for s in batch.next_state_p1 if s is not None])
+    non_final_next_states_p2 = torch.cat([s for s in batch.next_state_p2 if s is not None])
     non_final_next_states_p3 = torch.cat([s for s in batch.next_state_p3 if s is not None])
 
                                                      
 
     state_batch_p1 = torch.cat(batch.state_p1)
+    state_batch_p2 = torch.cat(batch.state_p2)
     state_batch_p3 = torch.cat(batch.state_p3)
     action_batch1 = torch.cat(batch.action1)
     reward_batch = torch.cat(batch.reward)
@@ -265,7 +267,7 @@ def optimize_model(i1=None, i2=None):
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     # columns of actions taken. These are the actions which would've been taken
     # for each batch state according to policy_net
-    state_action_values1=policy_net(x_p1=state_batch_p1,x_p3=state_batch_p3).gather(1, action_batch1)
+    state_action_values1=policy_net(x_p1=state_batch_p1,x_p2=state_batch_p2, x_p3=state_batch_p3,i1=1).gather(1, action_batch1)
 
     
     # Compute V(s_{t+1}) for all next states.
@@ -274,7 +276,7 @@ def optimize_model(i1=None, i2=None):
     # This is merged based on the mask, such that we'll have either the expected
     # state value or 0 in case the state was final.
     next_state_values1 = torch.zeros(BATCH_SIZE, device=device)
-    next_state_values1[non_final_mask_p1]=(target_net(x_p1=non_final_next_states_p1, x_p3=non_final_next_states_p3)).max(1)[0].detach()
+    next_state_values1[non_final_mask_p1]=(target_net(x_p1=non_final_next_states_p1,x_p2=non_final_next_states_p2, x_p3=non_final_next_states_p3,i1=1)).max(1)[0].detach()
     
     # Compute the expected Q values
     expected_state_action_values1 = (next_state_values1 * GAMMA) + reward_batch
@@ -285,7 +287,7 @@ def optimize_model(i1=None, i2=None):
 
     optimizer1.zero_grad()
     loss1.backward()
-    for param in paramgen(policy_net,i1=1):
+    for param in paramgen(policy_net,i1=1,i2=None):
         #print(param.grad.data)
         param.grad.data.clamp_(-1, 1)
     optimizer1.step()
@@ -295,9 +297,11 @@ def optimize_model(i1=None, i2=None):
     non_final_mask_p2 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p2)), device=device, dtype=torch.bool)
     non_final_mask_p3 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p3)), device=device, dtype=torch.bool)
     
+    non_final_next_states_p1 = torch.cat([s for s in batch.next_state_p1 if s is not None])
     non_final_next_states_p2 = torch.cat([s for s in batch.next_state_p2 if s is not None])
     non_final_next_states_p3 = torch.cat([s for s in batch.next_state_p3 if s is not None])
 
+    state_batch_p1 = torch.cat(batch.state_p1)
     state_batch_p2 = torch.cat(batch.state_p2)
     state_batch_p3 = torch.cat(batch.state_p3)
 
@@ -305,12 +309,12 @@ def optimize_model(i1=None, i2=None):
     action_batch2 = torch.cat(batch.action2)
     reward_batch = torch.cat(batch.reward)
 
-    state_action_values2 = policy_net(x_p2=state_batch_p2,x_p3=state_batch_p3).gather(1, action_batch2)
+    state_action_values2 = policy_net(x_p1=state_batch_p1,x_p2=state_batch_p2,x_p3=state_batch_p3,i2=1).gather(1, action_batch2)
 
     next_state_values2 = torch.zeros(BATCH_SIZE, device=device)
     
 
-    t2=(target_net( x_p2=non_final_next_states_p2, x_p3=non_final_next_states_p3)).max(1)[0].detach()
+    t2=(target_net(x_p1=non_final_next_states_p1, x_p2=non_final_next_states_p2, x_p3=non_final_next_states_p3,i2=1)).max(1)[0].detach()
     next_state_values2[non_final_mask_p2] = t2
 
     expected_state_action_values2 = (next_state_values2 * GAMMA) + reward_batch
@@ -323,7 +327,7 @@ def optimize_model(i1=None, i2=None):
     
     optimizer2.zero_grad()
     loss2.backward()
-    for param in paramgen(policy_net,i2=1):
+    for param in paramgen(policy_net,i1=None,i2=1):
         #print(param.grad.data)
         param.grad.data.clamp_(-1, 1)
     optimizer2.step()
