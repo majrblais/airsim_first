@@ -16,7 +16,7 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 torch.autograd.set_detect_anomaly(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-TransitionLeader = namedtuple('Transition',('state_i0','state_p1', 'action','next_state_i0', 'next_state_p1','reward'))
+TransitionLeader = namedtuple('Transition',('state_i0','state_p3', 'action','next_state_i0', 'next_state_p3','reward'))
 TransitionFollower = namedtuple('Transition',('state_p1','state_p2','state_p3', 'action', 'next_state_p1', 'next_state_p2','next_state_p3','reward'))
 
 
@@ -49,7 +49,7 @@ class ReplayMemoryF(object):
     
 class DQNLeader(nn.Module):
     def __init__(self, ln):
-        super(DQN, self).__init__()
+        super(DQNLeader, self).__init__()
         self.lin1 = nn.Linear(ln,32)
         self.lin2 = nn.Linear(32,64)
         self.lin3 = nn.Linear(64,128)
@@ -66,8 +66,8 @@ class DQNLeader(nn.Module):
         self.lin6 = nn.Linear(256,4)
         
         
-    def forward(self, x_p, x_img):
-        p=x_p
+    def forward(self, x_p3, x_img):
+        p=x_p3
         img=x_img
         p = p.to(device).float()
         p = self.lin1(p)
@@ -93,7 +93,7 @@ class DQNLeader(nn.Module):
 
 class DQNFollower(nn.Module):
     def __init__(self, ln1, ln2, ln3):
-        super(DQN, self).__init__()
+        super(DQNFollower, self).__init__()
         
         self.lin1a = nn.Linear(ln1,32)
         self.lin2a = nn.Linear(32,64)
@@ -116,12 +116,9 @@ class DQNFollower(nn.Module):
         self.lin4e = nn.Linear(128,64)
         self.lin5e = nn.Linear(64,4)
         
-        self.lin4f = nn.Linear(128,64)
-        self.lin5f = nn.Linear(64,4)
         
         
-    def forward(self, x_p1=None, x_p2=None,x_p3=None,i1=None, i2=None):
-        print("forward")
+    def forward(self, x_p1, x_p2,x_p3):
         p1=x_p1
         p2=x_p2
         p3=x_p3
@@ -142,15 +139,15 @@ class DQNFollower(nn.Module):
         p2 = self.lin3b(p2)
 
         p3 = p3.to(device).float()
-        p3 = self.lin1b(p3)
-        p3 = self.lin2b(p3)
-        p3 = self.lin3b(p3)
+        p3 = self.lin1c(p3)
+        p3 = self.lin2c(p3)
+        p3 = self.lin3c(p3)
 
         combinedp = torch.cat((p1,p2,p3),1)
         outp = combinedp.view(combinedp.size(0), -1)   
         outp = self.lin2d(outp)
         out1 = self.lin4e(outp)
-        out1 = self.lin5e(out1)
+        out = self.lin5e(out1)
         return out
    
 
@@ -206,19 +203,16 @@ init_screen_p1,init_img_1, init_screen_p2, init_screen_p3  = get_screen()
 
 #print(n_actions)
 
-policy_netLeader = DQNLeader(ln1=len(init_screen_p1[0])).to(device)
+policy_netLeader = DQNLeader(ln=len(init_screen_p1[0])).to(device)
 print(policy_netLeader)
-target_netLeader = DQNLeader(ln1=len(init_screen_p1[0])).to(device)
+target_netLeader = DQNLeader(ln=len(init_screen_p1[0])).to(device)
 target_netLeader.load_state_dict(policy_netLeader.state_dict())
+
 
 policy_netFollower= DQNFollower(ln1=len(init_screen_p1[0]),ln2=len(init_screen_p2[0]),ln3=len(init_screen_p3[0])).to(device)
 print(policy_netFollower)
 target_netFollower = DQNFollower(ln1=len(init_screen_p1[0]),ln2=len(init_screen_p2[0]),ln3=len(init_screen_p3[0])).to(device)
 target_netFollower.load_state_dict(policy_netFollower.state_dict())
-
-exit()
-
-
 
 optimizerLeader = optim.AdamW(policy_netLeader.parameters())
 optimizerFollower = optim.AdamW(policy_netFollower.parameters())
@@ -238,12 +232,12 @@ def select_action(state_p1=None, state_p2=None, state_p3=None,img=None,mode=None
     if True:
         with torch.no_grad():
             if mode == "Leader":
-                act=policy_netLeader(x_img=img,x_p3=state_p3,i1=1)
+                act=policy_netLeader(x_img=img,x_p3=state_p3)
                 act1=act.max(1)[1].view(1, 1)
                 return act1
                 
             if mode == "Follower":
-                act=policy_netFollower(x_p1=state_p1,x_p2=state_p2,x_p3=state_p3,i2=1)
+                act=policy_netFollower(x_p1=state_p1,x_p2=state_p2,x_p3=state_p3)
                 act2=act.max(1)[1].view(1, 1)
                 return act2
 
@@ -261,7 +255,6 @@ def optimize_modelLeader():
         
     transitions = memoryLeader.sample(BATCH_SIZE)
     batch = TransitionLeader(*zip(*transitions))
-    
 
     if all(s is None for s in batch.next_state_i0):
         return
@@ -293,7 +286,7 @@ def optimize_modelLeader():
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     # columns of actions taken. These are the actions which would've been taken
     # for each batch state according to policy_net
-    state_action_values1=policy_net(x_i0=state_batch_i0,x_p3=state_batch_p3,i1=1).gather(1, action_batch1)
+    state_action_values1=policy_netLeader(x_img=state_batch_i0,x_p3=state_batch_p3).gather(1, action_batch1)
     
     # Compute V(s_{t+1}) for all next states.
     # Expected values of actions for non_final_next_states are computed based
@@ -301,7 +294,7 @@ def optimize_modelLeader():
     # This is merged based on the mask, such that we'll have either the expected
     # state value or 0 in case the state was final.
     next_state_values1 = torch.zeros(BATCH_SIZE, device=device)
-    next_state_values1[non_final_mask_p1]=(target_net(x_i0=state_batch_i0,x_p3=state_batch_p3,i1=1)).max(1)[0].detach()
+    next_state_values1[non_final_mask_p3]=(target_netLeader(x_img=non_final_next_states_i0,x_p3=non_final_next_states_p3)).max(1)[0].detach()
     
     # Compute the expected Q values
     expected_state_action_values1 = (next_state_values1 * GAMMA) + reward_batch
@@ -317,23 +310,25 @@ def optimize_modelLeader():
         param.grad.data.clamp_(-1, 1)
     optimizerLeader.step()
 
-    
 def optimize_modelFollower():
     
+
+    if (len(memoryFollower) < BATCH_SIZE):
+        return
+
     print("loss2")
     transitions = memoryFollower.sample(BATCH_SIZE)
     batch = TransitionFollower(*zip(*transitions))
-
-
+    
     if all(s is None for s in batch.next_state_p1):
         return
-
+        
     if all(s is None for s in batch.next_state_p2):
         return
         
     if all(s is None for s in batch.next_state_p3):
-        return
-        
+        return        
+
     non_final_mask_p1 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p1)), device=device, dtype=torch.bool)
     non_final_mask_p2 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p2)), device=device, dtype=torch.bool)
     non_final_mask_p3 = torch.tensor(tuple(map(lambda s: s is not None,batch.next_state_p3)), device=device, dtype=torch.bool)
@@ -349,11 +344,12 @@ def optimize_modelFollower():
     state_batch_p3 = torch.cat(batch.state_p3)
     action_batch2 = torch.cat(batch.action)
     reward_batch = torch.cat(batch.reward)
-
-    state_action_values2 = policy_netFollower(x_p1=state_batch_p1,x_p2=state_batch_p2,x_p3=state_batch_p3,i2=1).gather(1, action_batch2)
+    
+    
+    state_action_values2 = policy_netFollower(x_p1=state_batch_p1,x_p2=state_batch_p2,x_p3=state_batch_p3).gather(1, action_batch2)
 
     next_state_values2 = torch.zeros(BATCH_SIZE, device=device)
-    next_state_values2[non_final_mask_p2]=(target_netFollower(x_p1=non_final_next_states_p1, x_p2=non_final_next_states_p2, x_p3=non_final_next_states_p3,i2=1)).max(1)[0].detach()
+    next_state_values2[non_final_mask_p2]=(target_netFollower(x_p1=non_final_next_states_p1, x_p2=non_final_next_states_p2, x_p3=non_final_next_states_p3)).max(1)[0].detach()
     
     expected_state_action_values2 = (next_state_values2 * GAMMA) + reward_batch
 
@@ -366,8 +362,8 @@ def optimize_modelFollower():
     optimizerFollower.zero_grad()
     loss2.backward()
     for param in policy_netFollower.parameters():
-        #print(param.grad.data)
         param.grad.data.clamp_(-1, 1)
+    
     optimizerFollower.step()
 
 rew = []
@@ -410,50 +406,48 @@ for i_episode in range(num_episodes):
         current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 = get_screen()
         
         if not done:
-            print("not done")
             next_state_p1,next_state_i1, next_state_p2, next_state_p3 =  current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 
         else:
              next_state_p1,next_state_i1, next_state_p2, next_state_p3 = None, None, None, None
 
-        memoryLeader.push(state_p1,state_i1, action, next_state_p1, next_state_i1, reward)
+        memoryLeader.push(state_i1,state_p3, action,next_state_i1, next_state_p3, reward)
         state_p1,state_i1, state_p2, state_p3 = next_state_p1,next_state_i1, next_state_p2, next_state_p3
         
         
         #Follower1
-        print(state_p1)
-        print(state_p2)
-        print(state_p3)
-        
-        action = select_action(state_p1=state_p1,state_p2=state_p2,state_p3=state_p3,mode="Follower")
-        _, reward_, done, _ = env.step(action.item(),drone_name="DroneFollower1")
-        reward = torch.tensor([reward_], device=device)
-
-        last_screen_p1, last_img_1, last_screen_p2, last_screen_p3=  init_screen_p1,init_img_1, init_screen_p2, init_screen_p3 
-        current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 = get_screen()
-        
         if not done:
-            next_state_p1,next_state_i1, next_state_p2, next_state_p3 =  current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 
-        else:
-             next_state_p1,next_state_i1, next_state_p2, next_state_p3 = None, None, None, None
+            action = select_action(state_p1=state_p1,state_p2=state_p2,state_p3=state_p3,mode="Follower")
+            _, reward_, done, _ = env.step(action.item(),drone_name="DroneFollower1")
+            reward = torch.tensor([reward_], device=device)
 
-        memoryFollower.push(state_p1, state_p2,state_p3, action, next_state_p1, next_state_p2, next_state_p3, reward)
-        state_p1,state_i1, state_p2, state_p3 = next_state_p1,next_state_i1, next_state_p2, next_state_p3        
+            last_screen_p1, last_img_1, last_screen_p2, last_screen_p3=  init_screen_p1,init_img_1, init_screen_p2, init_screen_p3 
+            current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 = get_screen()
+            
+            if not done:
+                next_state_p1,next_state_i1, next_state_p2, next_state_p3 =  current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 
+            else:
+                 next_state_p1,next_state_i1, next_state_p2, next_state_p3 = None, None, None, None
+
+            memoryFollower.push(state_p1, state_p2,state_p3, action, next_state_p1, next_state_p2, next_state_p3, reward)
+            state_p1,state_i1, state_p2, state_p3 = next_state_p1,next_state_i1, next_state_p2, next_state_p3        
 
         #Follower2
-        action = select_action(state_p1=state_p1,state_p2=state_p2,state_p3=state_p3,mode="Follower")
-        _, reward_, done, _ = env.step(action.item(),drone_name="DroneFollower2")
-        reward = torch.tensor([reward_], device=device)
-
-        last_screen_p1, last_img_1, last_screen_p2, last_screen_p3=  init_screen_p1,init_img_1, init_screen_p2, init_screen_p3 
-        current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 = get_screen()
-        
+        #switch p1 and p2 because we want the position of actual drone as the first one
         if not done:
-            next_state_p1,next_state_i1, next_state_p2, next_state_p3 =  current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 
-        else:
-             next_state_p1,next_state_i1, next_state_p2, next_state_p3 = None, None, None, None
+            action = select_action(state_p1=state_p2,state_p2=state_p1,state_p3=state_p3,mode="Follower")
+            _, reward_, done, _ = env.step(action.item(),drone_name="DroneFollower2")
+            reward = torch.tensor([reward_], device=device)
 
-        memoryFollower.push(state_p1, state_p2,state_p3, action, next_state_p1, next_state_p2, next_state_p3, reward)
-        state_p1,state_i1, state_p2, state_p3 = next_state_p1,next_state_i1, next_state_p2, next_state_p3        
+            last_screen_p1, last_img_1, last_screen_p2, last_screen_p3=  init_screen_p1, init_img_1, init_screen_p2, init_screen_p3 
+            current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 = get_screen()
+            
+            if not done:
+                next_state_p1,next_state_i1, next_state_p2, next_state_p3 =  current_screen_p1,current_screen_i1, current_screen_p2, current_screen_p3 
+            else:
+                 next_state_p1,next_state_i1, next_state_p2, next_state_p3 = None, None, None, None
+
+            memoryFollower.push(state_p2, state_p1,state_p3, action, next_state_p2, next_state_p1, next_state_p3, reward)
+            state_p1,state_i1, state_p2, state_p3 = next_state_p1,next_state_i1, next_state_p2, next_state_p3        
 
         # Perform one step of the optimization (on the policy network)
         optimize_modelLeader()
@@ -469,7 +463,8 @@ for i_episode in range(num_episodes):
 
         # Update the target network, copying all weights and biases in DQN
         if t % TARGET_UPDATE == 0:
-            target_net.load_state_dict(policy_net.state_dict())
+            target_netLeader.load_state_dict(policy_netLeader.state_dict())
+            target_netFollower.load_state_dict(policy_netFollower.state_dict())
         
 
 print('Complete')
