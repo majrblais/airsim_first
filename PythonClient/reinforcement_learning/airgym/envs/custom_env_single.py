@@ -20,7 +20,7 @@ class AirSimcustomEnv_base(gym.Env):
         self.observation_space = spaces.Box(0, 255, shape=image_shape, dtype=np.uint8)
         
         #Current state of agent    
-        self.state = {"position1": np.zeros(3),"position2": np.zeros(3), "collision1": False, "collision2": False , "prev_position1": np.zeros(3), "prev_position2": np.zeros(3), "track_pos" : 0}
+        self.state = {"position0": np.zeros(3),"position1": np.zeros(3),"position2": np.zeros(3), "collision1": False, "collision2": False , "prev_position1": np.zeros(3), "prev_position2": np.zeros(3), "track_pos" : 0}
         
         #Used to connect to ue/rl
         self.drone = airsim.MultirotorClient(ip_address)
@@ -28,22 +28,20 @@ class AirSimcustomEnv_base(gym.Env):
         self.drone.enableApiControl(True)
         self.drone.armDisarm(True)
         self.track = []
-        for i in range(1,201):
+        for i in range(1,201,5):
             self.track.append([0,-i])
 
-        for i in range(1,101):
+        for i in range(1,101,5):
             self.track.append([-i,-200])
 
-        for i in range(1,301):
+        for i in range(1,301,5):
             self.track.append([-100,-200-i])
 
-        for i in range(1,126):
+        for i in range(1,126,5):
             self.track.append([-100-i,-500])
 
-        for i in range(1,401):
+        for i in range(1,401,5):
             self.track.append([-225,-500-i])
-
-        self.image_request = airsim.ImageRequest(0, airsim.ImageType.Scene, False, False)
           
         self._setup_flight()
     
@@ -58,13 +56,17 @@ class AirSimcustomEnv_base(gym.Env):
     def _setup_flight(self):
         print("setting-up")
         self.drone.reset()
+        
+        self.drone.enableApiControl(True, "DroneLeader")
         self.drone.enableApiControl(True, "DroneFollower1")
         self.drone.enableApiControl(True, "DroneFollower2")
         
-
+        self.drone.armDisarm(True, "DroneLeader")
         self.drone.armDisarm(True, "DroneFollower1")
         self.drone.armDisarm(True, "DroneFollower2")
 
+        self.drone.moveToPositionAsync(0, 0, -80, 5, vehicle_name="DroneLeader").join()
+        self.drone.moveByVelocityAsync(0, 0, 0, 5, vehicle_name="DroneLeader").join()
         
         self.drone.moveToPositionAsync(2, 0, -74, 5, vehicle_name="DroneFollower1").join()
         self.drone.moveByVelocityAsync(0, 0, 0, 5, vehicle_name="DroneFollower1").join()
@@ -83,16 +85,20 @@ class AirSimcustomEnv_base(gym.Env):
         obs = self._get_obs()
         reward, done = self._compute_reward(drone_name)
         self.state["track_pos"]+=1
+        
+
+        self.drone.moveToPositionAsync(self.track[self.state["track_pos"]][0], self.track[self.state["track_pos"]][1], self.state["position0"].z_val, 1, vehicle_name="DroneLeader").join()
+        
 
         return obs, reward, done, self.state
         
     def _compute_reward(self, drone_name):
         #desired location & current location
         
-        pts = [np.array([self.track[self.state["track_pos"]][0],self.track[self.state["track_pos"]][1], -75.0])]
         
         
         #followers 
+        pts = np.array(list((self.state["position0"].x_val,self.state["position0"].y_val,self.state["position0"].z_val,)))
         quad_pt1 = np.array(list((self.state["position1"].x_val,self.state["position1"].y_val,self.state["position1"].z_val,)))
         quad_pt2 = np.array(list((self.state["position2"].x_val,self.state["position2"].y_val,self.state["position2"].z_val,)))
         
@@ -108,26 +114,26 @@ class AirSimcustomEnv_base(gym.Env):
             print("collision2")    
 
         #same function for both followers, distance between the two followers must be smaller than X
-        elif np.linalg.norm(quad_pt1[0:2]-quad_pt2[0:2]) >= 20:
+        elif np.linalg.norm(quad_pt1[0:2]-quad_pt2[0:2]) >= 30:
             reward = -100
             print("distance")
         
         #function to determine if distance of follower# from leader is at less than X
-        elif (np.linalg.norm(pts[0][0:2]-quad_pt1[0:2]) >= 10) and drone_name == "DroneFollower1":
+        elif (np.linalg.norm(pts[0:2]-quad_pt1[0:2]) >= 20) and drone_name == "DroneFollower1":
             reward = -100
             print("circle1")
             
-        elif (np.linalg.norm(pts[0][0:2]-quad_pt2[0:2]) >= 10) and drone_name == "DroneFollower2":
+        elif (np.linalg.norm(pts[0:2]-quad_pt2[0:2]) >= 20) and drone_name == "DroneFollower2":
             reward = -100
             print("circle2")
             
             
         elif drone_name == "DroneFollower1":
-            dist = np.linalg.norm(pts[0][0:2]-quad_pt1[0:2])
+            dist = np.linalg.norm(pts[0:2]-quad_pt1[0:2])
             reward = -dist
             
         elif drone_name == "DroneFollower2":
-            dist = np.linalg.norm(pts[0][0:2]-quad_pt2[0:2])
+            dist = np.linalg.norm(pts[0:2]-quad_pt2[0:2])
             reward = -dist
             
             
@@ -138,15 +144,20 @@ class AirSimcustomEnv_base(gym.Env):
 
         #print(reward)            
         done = 0
-        if reward <=-25:
+        if reward <=-30:
             done = 1
             
         return reward, done    
     
     def _get_obs(self):
-        
+    
+        self.drone_state0 = self.drone.getMultirotorState(vehicle_name="DroneLeader")
         self.drone_state1 = self.drone.getMultirotorState(vehicle_name="DroneFollower1")
         self.drone_state2 = self.drone.getMultirotorState(vehicle_name="DroneFollower2")
+        
+        #leader position
+        self.state["position0"] = self.drone_state0.kinematics_estimated.position
+
         
         self.state["prev_position1"] = self.state["position1"]
         self.state["position1"] = self.drone_state1.kinematics_estimated.position
@@ -164,7 +175,7 @@ class AirSimcustomEnv_base(gym.Env):
         
         
 
-        return self.drone_state1.kinematics_estimated.position, self.drone_state2.kinematics_estimated.position, self.track[self.state["track_pos"]]
+        return self.drone_state1.kinematics_estimated.position, self.drone_state2.kinematics_estimated.position, self.drone_state0.kinematics_estimated.position
     
     def _do_action(self, action, drone_name):
         #print(action)

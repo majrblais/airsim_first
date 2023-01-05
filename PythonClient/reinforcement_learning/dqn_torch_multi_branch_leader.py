@@ -16,7 +16,7 @@ import torch.nn.functional as F
 import torchvision.transforms as T
 torch.autograd.set_detect_anomaly(True)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-TransitionLeader = namedtuple('Transition',('state_i0','state_p1', 'action','next_state_i0', 'next_state_p1','reward'))
+TransitionLeader = namedtuple('Transition',('state_i0','state_p3', 'action','next_state_i0', 'next_state_p3','reward'))
 TransitionFollower = namedtuple('Transition',('state_p1','state_p2','state_p3', 'action', 'next_state_p1', 'next_state_p2','next_state_p3','reward'))
 
 
@@ -328,7 +328,7 @@ def optimize_model(i1=None, i2=None):
     # This is merged based on the mask, such that we'll have either the expected
     # state value or 0 in case the state was final.
     next_state_values1 = torch.zeros(BATCH_SIZE, device=device)
-    next_state_values1[non_final_mask_p1]=(target_net(x_i0=state_batch_i0,x_p3=state_batch_p3,i1=1)).max(1)[0].detach()
+    next_state_values1[non_final_mask_p3]=(target_net(x_i0=non_final_next_states_i0,x_p3=non_final_next_states_p3,i1=1)).max(1)[0].detach()
     
     # Compute the expected Q values
     expected_state_action_values1 = (next_state_values1 * GAMMA) + reward_batch
@@ -447,7 +447,7 @@ for i_episode in range(num_episodes):
         else:
              next_state_p1,next_state_i1, next_state_p2, next_state_p3 = None, None, None, None
 
-        memoryLeader.push(state_p1,state_i1, action, next_state_p1, next_state_i1, reward)
+        memoryLeader.push(state_i1,state_p3, action,next_state_i1, next_state_p3,  reward)
         state_p1,state_i1, state_p2, state_p3 = next_state_p1,next_state_i1, next_state_p2, next_state_p3
         
         

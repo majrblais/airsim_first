@@ -95,7 +95,7 @@ class DQNFollower(nn.Module):
 
 
 from airgym.envs import custom_env_single
-env = custom_env_single.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=1, image_shape=(128, 128, 1),)
+env = custom_env_single.AirSimcustomEnv_base(ip_address="127.0.0.1",step_length=5, image_shape=(128, 128, 1),)
 
 
 def get_screen():
@@ -109,14 +109,15 @@ def get_screen():
     y2=screen2.y_val
     z2=screen2.z_val
     
-    x3=screen3[0]
-    y3=screen3[1]
+    x3=screen3.x_val
+    y3=screen3.y_val
+    z3=screen3.z_val
  
 
     #screen = np.array([float(x),float(y),float(z)])
-    pos1 = np.array([float(x1),float(y1)])
-    pos2 = np.array([float(x2),float(y2)])
-    pos3 = np.array([float(x3),float(y3)])
+    pos1 = np.array([float(str(round(x1, 2))),float(str(round(y1, 2)))])
+    pos2 = np.array([float(str(round(x2, 2))),float(str(round(y2, 2)))])
+    pos3 = np.array([float(str(round(x3, 2))),float(str(round(y3, 2)))])
     #screen = torch.from_numpy(np.expand_dims(screen, axis=0))
     pos1 = torch.from_numpy(pos1)
     pos2 = torch.from_numpy(pos2)
@@ -125,7 +126,7 @@ def get_screen():
     return pos1.unsqueeze(0) , pos2.unsqueeze(0) , pos3.unsqueeze(0)
 
 
-BATCH_SIZE = 4
+BATCH_SIZE = 64
 GAMMA = 0.997
 EPS_START = 0.95
 EPS_END = 0.05
@@ -251,6 +252,7 @@ for i_episode in range(num_episodes):
 
         
         #Follower1
+        print(state_p1, state_p2, state_p3)
         action = select_action(state_p1=state_p1,state_p2=state_p2,state_p3=state_p3)
         _, reward_, done, _ = env.step(action.item(),drone_name="DroneFollower1")
         reward = torch.tensor([reward_], device=device)
@@ -266,6 +268,8 @@ for i_episode in range(num_episodes):
         memoryFollower.push(state_p1, state_p2,state_p3, action, next_state_p1, next_state_p2, next_state_p3, reward)
         state_p1, state_p2, state_p3 = next_state_p1, next_state_p2, next_state_p3        
 
+
+        print(state_p1, state_p2, state_p3)
         #Follower2
         #switch p1 and p2 because we want the position of actual drone as the first one
         if not done:
@@ -285,6 +289,8 @@ for i_episode in range(num_episodes):
             state_p1, state_p2, state_p3 = next_state_p1, next_state_p2, next_state_p3      
 
         # Perform one step of the optimization (on the policy network)
+        
+        print(state_p1, state_p2, state_p3)
         optimize_modelFollower()
         if done:
             print("done")

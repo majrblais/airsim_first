@@ -131,13 +131,7 @@ def optimize_model():
                                           batch.next_state)), device=device, dtype=torch.bool)
     non_final_next_states = torch.cat([s for s in batch.next_state
                                                 if s is not None])
-                                                
-    print(non_final_mask)
-    print(non_final_next_states)
-    print(non_final_mask.shape)
-    print(non_final_next_states.shape)
-    exit()
-                                                
+                                       
     state_batch = torch.cat(batch.state)
     action_batch = torch.cat(batch.action)
     reward_batch = torch.cat(batch.reward)

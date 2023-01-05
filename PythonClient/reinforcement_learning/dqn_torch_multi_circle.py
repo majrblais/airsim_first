@@ -8,7 +8,6 @@ from collections import namedtuple, deque
 from itertools import count
 from PIL import Image
 from torchvision import models
-from torchsummary import summary
 import torch
 import torch.nn as nn
 import torch.optim as optim

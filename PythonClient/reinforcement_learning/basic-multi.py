@@ -15,13 +15,17 @@ client.armDisarm(True)
 
 client = airsim.MultirotorClient()
 client.confirmConnection()
-client.enableApiControl(True, "Drone1")
-client.enableApiControl(True, "Drone2")
-client.armDisarm(True, "Drone1")
-client.armDisarm(True, "Drone2")
+client.enableApiControl(True, "DroneLeader")
+client.enableApiControl(True, "DroneFollower1")
+client.enableApiControl(True, "DroneFollower2")
 
-client.takeoffAsync(vehicle_name="Drone1").join()
-client.takeoffAsync(vehicle_name="Drone2").join()
+client.armDisarm(True, "DroneLeader")
+client.armDisarm(True, "DroneFollower1")
+client.armDisarm(True, "DroneFollower2")
+
+client.takeoffAsync(vehicle_name="DroneLeader").join()
+client.takeoffAsync(vehicle_name="DroneFollower1").join()
+client.takeoffAsync(vehicle_name="DroneFollower2").join()
 
 client.moveToPositionAsync(0, 0, -100, 10,vehicle_name="Drone1").join()
 client.moveToPositionAsync(0, 0, -100, 10,vehicle_name="Drone2").join()
