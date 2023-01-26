@@ -22,19 +22,14 @@ class AirSimcustomEnv_base(gym.Env):
         #Current state of agent    
         self.state = {"position0": np.zeros(3),"position1": np.zeros(3),"collision0": False, "collision1": False, "collision2": False ,"prev_position0": np.zeros(3), "prev_position1": np.zeros(3)}
         
+        self.current_drone="DroneFollower1"
+        self.action_space = spaces.Discrete(4)
         #Used to connect to ue/rl
         self.drone = airsim.MultirotorClient(ip_address)
         self.drone.confirmConnection()
         self.drone.enableApiControl(True)
         self.drone.armDisarm(True)
         self.track = []
-        
-        #set everything black except 2drones and 2fire spots
-        success= self.drone.simSetSegmentationObjectID("[\w]*", 0, True)
-        success = self.drone.simSetSegmentationObjectID("DroneFollower1", 10, True) #[29, 26, 199]
-        success = self.drone.simSetSegmentationObjectID("DroneFollower2", 20, True)  # [146, 52, 70]      
-        success = self.drone.simSetSegmentationObjectID("detector_1", 30, True) #[226, 149, 143], pos:-50, 15, -50
-        success = self.drone.simSetSegmentationObjectID("detector_6", 40, True) #[151, 126, 171, pos:78, 69, -50 (detector_2 is written as detector_6 due to ue4)
         
         self.pos_1=[np.array([-45.0,20.0,-50.0]),]
         self.pos_6=[np.array([30.0,40.0,-50.0]),]
@@ -66,30 +61,40 @@ class AirSimcustomEnv_base(gym.Env):
         
         #takeoff, move to side by side
         self.drone.takeoffAsync(vehicle_name="DroneFollower1").join()
-        self.drone.moveToPositionAsync(5, 0, -50, 1, vehicle_name="DroneFollower1").join()
+        self.drone.moveToPositionAsync(5, 0, -50, 10, vehicle_name="DroneFollower1").join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1, vehicle_name="DroneFollower1").join()
         
         self.drone.takeoffAsync(vehicle_name="DroneFollower2").join()
-        self.drone.moveToPositionAsync(-5, 0, -50, 1, vehicle_name="DroneFollower2").join()
+        self.drone.moveToPositionAsync(-5, 0, -51, 10, vehicle_name="DroneFollower2").join()
         self.drone.moveByVelocityAsync(0, 0, 0, 1, vehicle_name="DroneFollower2").join()
         
         
+    def step(self, action):
         
+        if self.current_drone=="DroneFollower1":
+            self._do_action(action)
         
-        
-    def step(self, action,drone_name):
-        
-        self._do_action(action,drone_name)
-        
-        obs = self._get_obs()
-        reward, done = self._compute_reward(drone_name)
+            obs = self._get_obs()
+            reward, done = self._compute_reward()
+            self.current_drone="DroneFollower2"
+            return obs, reward, done, self.state
+            
+        elif self.current_drone=="DroneFollower2":
+            self._do_action(action)
 
-        return obs, reward, done, self.state
+            obs = self._get_obs()
+            reward, done = self._compute_reward()
+            self.current_drone="DroneFollower1"
+            return obs, reward, done, self.state
+            
+        else:
+            print("error step")
+            exit()
         
-    def _compute_reward(self, drone_name):
+    def _compute_reward(self):
         #desired location & current location
         
-        
+        drone_name=self.current_drone
         if drone_name == "DroneFollower1":
             end_pts = self.pos_1
             quad_pt0 = np.array(list((self.state["position0"].x_val,self.state["position0"].y_val,self.state["position0"].z_val,)))
@@ -141,34 +146,34 @@ class AirSimcustomEnv_base(gym.Env):
     
     def _get_obs(self):
         import cv2
+        if self.current_drone == "DroneFollower1":
+            self.drone.simSetSegmentationObjectID("[\w]*", 0, True)
+            self.drone.simSetSegmentationObjectID("DroneFollower1", 10, True)
+            self.drone.simSetSegmentationObjectID("DroneFollower2", 20, True)
+            self.drone.simSetSegmentationObjectID("detector_1", 30, True)
+            
+        elif self.current_drone == "DroneFollower2":
+            self.drone.simSetSegmentationObjectID("[\w]*", 0, True)
+            self.drone.simSetSegmentationObjectID("DroneFollower1", 20, True)
+            self.drone.simSetSegmentationObjectID("DroneFollower2", 10, True)
+            self.drone.simSetSegmentationObjectID("detector_6", 30, True)
+        else:
+            print("obs error")
+            exit()
     
-        responses = self.drone.simGetImages([self.image_request_rgb,self.image_request_seg], external=True)
-        response_rgb = responses[0]
-        response_seg = responses[1]
-        
-        
-        img = np.fromstring(response_rgb.image_data_uint8, dtype=np.uint8)
-        img_rgb = img.reshape(response_rgb.height, response_rgb.width, 3)
-        try:
-            image = Image.fromarray(img_rgb)
-            im_final = np.array(image.resize((1080, 1080)))
-
-        except:
-            im_final = np.zeros((1080,1080,3), np.uint8)
-        
+            
+        responses = self.drone.simGetImages([self.image_request_seg], external=True)
+        response_seg = responses[0]
         
         img_seg = np.fromstring(response_seg.image_data_uint8, dtype=np.uint8)
         img_rgb_seg = img_seg.reshape(response_seg.height, response_seg.width, 3)
         
         try:
             image_seg = Image.fromarray(img_rgb_seg)
-            im_final_seg = np.array(image_seg.resize((1080, 1080)))
+            im_final_seg = np.array(image_seg.resize((512, 512)))
 
         except:
-            im_final_seg = np.zeros((1080,1080,3), np.uint8)
-
-
-
+            im_final_seg = np.zeros((512,512,3), np.uint8)
 
         self.drone_state0 = self.drone.getMultirotorState(vehicle_name="DroneFollower1")
         self.drone_state1 = self.drone.getMultirotorState(vehicle_name="DroneFollower2")
@@ -190,11 +195,13 @@ class AirSimcustomEnv_base(gym.Env):
         self.state["collision1"] = collision1
 
         
-
-        return im_final, im_final_seg
+        print(self.current_drone)
+        cv2.imwrite(self.current_drone+".png",im_final_seg)
+        return im_final_seg
     
-    def _do_action(self, action, drone_name):
+    def _do_action(self, action):
         #print(action)
+        drone_name=self.current_drone
         offset = self.interpret_action(action)
         pos=self.drone.getMultirotorState(vehicle_name=drone_name).kinematics_estimated.position
         self.drone.moveToPositionAsync(pos.x_val + offset[0],pos.y_val + offset[1],pos.z_val, 1, vehicle_name=drone_name).join()
