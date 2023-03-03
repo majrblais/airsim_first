@@ -3,31 +3,46 @@ import os
 from PIL import Image
 import numpy as np
 import time
+
 client = airsim.MultirotorClient()
 client.confirmConnection()
 client.enableApiControl(True)
 client.armDisarm(True)
 client.simSetSegmentationObjectID("[\w]*", 0, True)
-client.simSetSegmentationObjectID("DroneFollower1", 10, True) #[29, 26, 199]
-client.simSetSegmentationObjectID("DroneFollower2", 20, True)  # [146, 52, 70]      
+client.simSetSegmentationObjectID("DroneFollower0", 10, True) #[29, 26, 199]
+client.simSetSegmentationObjectID("fire2", 20, True) 
+
+client.enableApiControl(True, "DroneFollower0")
+client.armDisarm(True, "DroneFollower0")
+client.takeoffAsync(vehicle_name="DroneFollower0").join()
+client.moveToPositionAsync(0, 0, -10, 1,vehicle_name="DroneFollower0").join()
+client.moveToPositionAsync(-49, -34, -10, 1,vehicle_name="DroneFollower0").join()
+
+client.moveToPositionAsync(client.simGetObjectPose("fire2").position.x_val, client.simGetObjectPose("fire2").position.y_val, -10, 1,vehicle_name="DroneFollower0").join()
+
+
+
+
+
+ # [146, 52, 70]      
 client.simSetSegmentationObjectID("detector_1", 30, True) #[226, 149, 143], pos:
 client.simSetSegmentationObjectID("detector_6", 40, True) #[151, 126, 171, pos:
 
 
 
+client.enableApiControl(True, "DroneFollower0")
 client.enableApiControl(True, "DroneFollower1")
-client.enableApiControl(True, "DroneFollower2")
 
+client.armDisarm(True, "DroneFollower0")
 client.armDisarm(True, "DroneFollower1")
-client.armDisarm(True, "DroneFollower2")
 
-client.takeoffAsync(vehicle_name="DroneFollower1").join()
-client.moveToPositionAsync(5, 0, -5, 10,vehicle_name="DroneFollower1").join()
+client.takeoffAsync(vehicle_name="DroneFollower0").join()
+client.moveToPositionAsync(0, 0, -5, 1,vehicle_name="DroneFollower0").join()
 
 client.takeoffAsync(vehicle_name="DroneFollower2").join()
 client.moveToPositionAsync(-5, 0, -5, 10,vehicle_name="DroneFollower2").join()
 
-
+client.moveToPositionAsync(-45.0,15.0, -5, 1,vehicle_name="DroneFollower0").join()
 
 
 
@@ -73,7 +88,7 @@ client.armDisarm(True)
 client.enableApiControl(True, "DroneLeader")
 client.armDisarm(True, "DroneLeader")
 client.takeoffAsync(vehicle_name="DroneLeader").join()
-client.moveToPositionAsync(0, 0, -100, 10,vehicle_name="DroneLeader").join()
+client.moveToPositionAsync(-45.0,20.0, -5, 1,vehicle_name="DroneFollower0").join()
 
 success= client.simSetSegmentationObjectID("[\w]*", 0, True)
 print(success)
